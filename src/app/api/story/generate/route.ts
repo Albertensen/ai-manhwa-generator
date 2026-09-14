@@ -72,6 +72,7 @@ Create ${sceneCount} dramatic recap scenes. Ensure narration is in engaging, sus
             { role: 'user', content: userPrompt }
           ],
           temperature: 0.7,
+          stream: false,
         }),
       });
 
