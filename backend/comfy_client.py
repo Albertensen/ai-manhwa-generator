@@ -4,6 +4,8 @@ import urllib.parse
 import uuid
 import os
 import shutil
+import time
+import subprocess
 import websocket
 
 try:
@@ -12,6 +14,24 @@ except (ImportError, ValueError):
     import config
 
 COMFY_INPUT_DIR = os.path.join(os.path.dirname(config.COMFYUI_HOST), "input") if os.path.isabs(config.COMFYUI_HOST) else r"C:\ComfyUI\input"
+
+def ensure_comfyui_running():
+    """Checks if ComfyUI is responding; if not, restarts it via scheduled task"""
+    try:
+        with urllib.request.urlopen(f"{config.COMFYUI_HOST}/system_stats", timeout=3) as res:
+            return True
+    except Exception:
+        print("ComfyUI server offline, auto-restarting via ComfyUIServer task...")
+        subprocess.run('schtasks /run /tn "ComfyUIServer"', shell=True, capture_output=True)
+        for attempt in range(15):
+            time.sleep(1)
+            try:
+                with urllib.request.urlopen(f"{config.COMFYUI_HOST}/system_stats", timeout=2) as res:
+                    print("ComfyUI successfully restarted and online!")
+                    return True
+            except Exception:
+                continue
+    return False
 
 def ensure_ref_image(ref_image_path):
     """Ensures reference image exists inside ComfyUI input folder and returns its basename"""
@@ -30,7 +50,6 @@ def build_sdxl_workflow(prompt_text, negative_text, ref_image_basename=None, ipa
     extra_nodes = {}
 
     if ref_image_basename:
-        # IP-Adapter conditioning nodes
         extra_nodes = {
             "10": {
                 "inputs": {
@@ -144,6 +163,8 @@ def download_image(filename, subfolder, folder_type, dest_path):
 
 def generate_panel(prompt_text, negative_text, output_path, ref_image_path=None, ipadapter_weight=0.7):
     """Sync call to ComfyUI to render a panel image with optional IP-Adapter consistency"""
+    ensure_comfyui_running()
+    
     client_id = str(uuid.uuid4())
     ref_basename = ensure_ref_image(ref_image_path) if ref_image_path else None
     
