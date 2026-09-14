@@ -161,8 +161,30 @@ def download_image(filename, subfolder, folder_type, dest_path):
     url = f"{config.COMFYUI_HOST}/view?{params}"
     urllib.request.urlretrieve(url, dest_path)
 
-def generate_panel(prompt_text, negative_text, output_path, ref_image_path=None, ipadapter_weight=0.7):
-    """Sync call to ComfyUI to render a panel image with optional IP-Adapter consistency"""
+def generate_panel(prompt_text, negative_text, output_path, ref_image_path=None, ipadapter_weight=0.7, engine=None):
+    """
+    Renders a panel image with 2-step character consistency.
+    Defaults to high-quality cloud generation (ag/gemini-3.1-flash-image) with fallback to local ComfyUI SDXL.
+    """
+    if engine is None:
+        engine = os.getenv("IMAGE_ENGINE", "cloud")
+
+    if engine == "cloud":
+        try:
+            try:
+                from . import cloud_image_client
+            except (ImportError, ValueError):
+                import cloud_image_client
+            return cloud_image_client.generate_panel_cloud(
+                prompt_text=prompt_text,
+                negative_text=negative_text,
+                output_path=output_path,
+                ref_image_path=ref_image_path
+            )
+        except Exception as ce:
+            print(f"[comfy_client] Cloud image generation error: {ce}, falling back to local ComfyUI...")
+
+    # Fallback / explicit local ComfyUI SDXL workflow
     ensure_comfyui_running()
     
     client_id = str(uuid.uuid4())

@@ -31,6 +31,14 @@ Locked Appearance Description: "${characterLockPrompt}"
 
 For every scene where the character appears, you MUST weave the locked appearance description into "visual_prompt" along with scene-specific actions, background, and dramatic angles.
 
+STYLE REQUIREMENTS FOR "visual_prompt":
+Every visual_prompt MUST follow high-end cinematic manhwa aesthetics:
+"high-end cinematic manhwa style, crisp lineart, digital illustration, trending on webtoon, dramatic rim lighting, unreal engine 5 render, highly detailed, 8k wallpaper, ${characterLockPrompt}, [scene action & environment], [camera angle]"
+
+NEGATIVE PROMPT REQUIREMENTS:
+Every negative_prompt MUST strictly be:
+"ugly, low quality, deformed anatomy, blurry, artifacts, lowres, distorted face, mutated hands, extra fingers, text, speech bubble, watermark"
+
 Output strictly valid JSON with this exact schema:
 {
   "project_title": "Epic Title of the Episode",
@@ -40,8 +48,8 @@ Output strictly valid JSON with this exact schema:
       "scene_order": 1,
       "narration_text": "Indonesian dramatic voiceover text for the recap narration...",
       "dialogue_text": "Optional in-scene dialogue...",
-      "visual_prompt": "${characterLockPrompt}, standing amidst ruins, dark ominous sky, glowing particles, extreme close-up, dramatic manhwa angle, 8k",
-      "negative_prompt": "text, speech bubble, watermark, low quality, deformed hands, ugly face, extra limbs",
+      "visual_prompt": "high-end cinematic manhwa style, crisp lineart, digital illustration, trending on webtoon, dramatic rim lighting, unreal engine 5 render, highly detailed, 8k wallpaper, ${characterLockPrompt}, standing amidst ruins, dark ominous sky, glowing particles, extreme close-up, dramatic manhwa angle",
+      "negative_prompt": "ugly, low quality, deformed anatomy, blurry, artifacts, lowres, distorted face, mutated hands, extra fingers, text, speech bubble, watermark",
       "camera_motion": "zoom_in",
       "voice_emotion": "dramatic"
     }
@@ -97,8 +105,8 @@ Create ${sceneCount} dramatic recap scenes. Ensure narration is in engaging, sus
           scene_order: idx + 1,
           narration_text: `Adegan ${idx + 1}: Di tengah kehancuran, ${characterName} menyadari kekuatan sejatinya telah bangkit. Tidak ada lagi jalan untuk mundur.`,
           dialogue_text: idx === 0 ? 'Ini baru permulaan...' : undefined,
-          visual_prompt: `${characterLockPrompt}, scene ${idx + 1}, dynamic battle pose, glowing aura, rubble and smoke, cinematic angle, high quality manhwa illustration, 8k`,
-          negative_prompt: 'text, speech bubble, watermark, low quality, deformed hands, ugly face',
+          visual_prompt: `high-end cinematic manhwa style, crisp lineart, digital illustration, trending on webtoon, dramatic rim lighting, unreal engine 5 render, highly detailed, 8k wallpaper, ${characterLockPrompt}, scene ${idx + 1}, dynamic battle pose, glowing aura, rubble and smoke, cinematic angle`,
+          negative_prompt: 'ugly, low quality, deformed anatomy, blurry, artifacts, lowres, distorted face, mutated hands, extra fingers, text, speech bubble, watermark',
           camera_motion: idx % 2 === 0 ? 'zoom_in' : 'pan_left',
           voice_emotion: idx === 0 ? 'dramatic' : 'intense'
         }))

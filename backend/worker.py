@@ -8,9 +8,9 @@ import json
 from pathlib import Path
 
 try:
-    from . import config, comfy_client, tts_engine, video_composer, storage_uploader
+    from . import config, comfy_client, cloud_image_client, tts_engine, video_composer, storage_uploader
 except (ImportError, ValueError):
-    import config, comfy_client, tts_engine, video_composer, storage_uploader
+    import config, comfy_client, cloud_image_client, tts_engine, video_composer, storage_uploader
 
 def supabase_get(endpoint):
     url = f"{config.SUPABASE_URL}/rest/v1/{endpoint}"
@@ -60,22 +60,64 @@ def update_scene_status(scene_id, updates):
     except Exception as e:
         print(f"Error updating scene {scene_id}: {e}")
 
-def get_character_reference_image(character_id, project_id, current_scene_order):
-    """Finds an existing reference image for character consistency (IP-Adapter)"""
-    # 1. Check character's direct reference image
-    if character_id:
-        try:
-            chars = supabase_get(f"manhwa_characters?id=eq.{character_id}&limit=1")
-            if chars and chars[0].get("reference_image_url"):
-                ref_url = chars[0]["reference_image_url"]
-                local_ref = str(config.PANELS_DIR / f"char_ref_{character_id}.png")
-                if not os.path.exists(local_ref):
-                    urllib.request.urlretrieve(ref_url, local_ref)
-                return local_ref
-        except Exception as e:
-            print(f"Error fetching character reference: {e}")
+def ensure_character_master_anchor(character_id):
+    """
+    Step 1 of 2-Step Character Consistency:
+    Ensures a high-resolution Anchor Master Character Sheet exists for the protagonist.
+    If not already generated, generates it via cloud_image_client, uploads to Supabase,
+    and returns the local file path.
+    """
+    if not character_id:
+        return None
+    try:
+        chars = supabase_get(f"manhwa_characters?id=eq.{character_id}&limit=1")
+        if not chars:
+            return None
+        char = chars[0]
+        char_name = char.get("name", "Protagonist")
+        char_desc = char.get("appearance_locked_prompt", "")
+        ref_url = char.get("reference_image_url")
+        
+        local_anchor = str(config.PANELS_DIR / f"char_master_{character_id}.png")
+        if ref_url and os.path.exists(local_anchor):
+            return local_anchor
+        if ref_url:
+            try:
+                urllib.request.urlretrieve(ref_url, local_anchor)
+                return local_anchor
+            except Exception:
+                pass
+                
+        # Generate new Master Anchor Sheet
+        print(f"[Worker] Step 1: Generating Anchor Master Character Sheet for {char_name}...")
+        cloud_image_client.generate_master_character_sheet(
+            character_name=char_name,
+            appearance_desc=char_desc,
+            output_path=local_anchor
+        )
+        print(f"[Worker] Step 1 complete: Master Anchor saved to {local_anchor}")
+        
+        # Upload to Supabase Storage
+        anchor_url = storage_uploader.upload_file(local_anchor, f"characters/{character_id}_master.png")
+        print(f"[Worker] Master Anchor uploaded to: {anchor_url}")
+        
+        # Update character record in Supabase
+        supabase_patch(f"manhwa_characters?id=eq.{character_id}", {
+            "reference_image_url": anchor_url
+        })
+        return local_anchor
+    except Exception as e:
+        print(f"[Worker] Error generating/fetching character master anchor: {e}")
+        return None
 
-    # 2. If scene_order > 1, check if scene 1 panel exists locally
+def get_character_reference_image(character_id, project_id, current_scene_order):
+    """Finds or generates an anchor reference image for character consistency"""
+    # 1. Prioritize Master Character Anchor Sheet
+    anchor = ensure_character_master_anchor(character_id)
+    if anchor and os.path.exists(anchor):
+        return anchor
+
+    # 2. Fallback: check Scene 1 panel
     if current_scene_order > 1:
         try:
             first_scenes = supabase_get(f"manhwa_scenes?project_id=eq.{project_id}&scene_order=eq.1&limit=1")
@@ -88,7 +130,7 @@ def get_character_reference_image(character_id, project_id, current_scene_order)
                     urllib.request.urlretrieve(first_scenes[0]["image_url"], s1_panel)
                     return s1_panel
         except Exception as e:
-            print(f"Error checking previous scene for IP-Adapter ref: {e}")
+            print(f"Error checking previous scene for reference: {e}")
 
     return None
 
