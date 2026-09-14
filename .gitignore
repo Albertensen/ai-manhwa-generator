@@ -1,0 +1,33 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/cache
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Misc
+.DS_Store
+*.pem
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# Storage outputs
+/storage/outputs/*
+!/storage/outputs/.gitkeep
+/storage/panels/*
+!/storage/panels/.gitkeep
+/storage/audios/*
+!/storage/audios/.gitkeep
