@@ -1,6 +1,9 @@
 import os
 import subprocess
-from . import config
+try:
+    from . import config
+except (ImportError, ValueError):
+    import config
 
 def create_scene_video(image_path, audio_path, duration, output_path, motion='zoom_in'):
     """Generates a single scene video with Ken Burns pan-and-zoom and synced audio"""

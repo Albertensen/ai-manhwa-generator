@@ -31,3 +31,8 @@
 !/storage/panels/.gitkeep
 /storage/audios/*
 !/storage/audios/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+output/

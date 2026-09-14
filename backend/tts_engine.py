@@ -2,7 +2,10 @@ import asyncio
 import os
 import subprocess
 import edge_tts
-from . import config
+try:
+    from . import config
+except (ImportError, ValueError):
+    import config
 
 async def synthesize_voice(text, output_file, voice=config.DEFAULT_VOICE_MALE):
     """Generates high-quality speech with edge-tts"""

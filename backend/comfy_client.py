@@ -4,7 +4,10 @@ import urllib.parse
 import uuid
 import os
 import websocket
-from . import config
+try:
+    from . import config
+except (ImportError, ValueError):
+    import config
 
 def build_sdxl_workflow(prompt_text, negative_text, output_prefix="manhwa_panel"):
     """Generates a standard headless ComfyUI SDXL prompt graph"""

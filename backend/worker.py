@@ -4,7 +4,10 @@ import time
 import asyncio
 import urllib.request
 import json
-from . import config, comfy_client, tts_engine, video_composer
+try:
+    from . import config, comfy_client, tts_engine, video_composer
+except (ImportError, ValueError):
+    import config, comfy_client, tts_engine, video_composer
 
 def poll_pending_scenes():
     url = f"{config.SUPABASE_URL}/rest/v1/manhwa_scenes?status=eq.pending&order=created_at.asc&limit=1"
