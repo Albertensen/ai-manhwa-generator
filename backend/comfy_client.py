@@ -3,15 +3,71 @@ import urllib.request
 import urllib.parse
 import uuid
 import os
+import shutil
 import websocket
+
 try:
     from . import config
 except (ImportError, ValueError):
     import config
 
-def build_sdxl_workflow(prompt_text, negative_text, output_prefix="manhwa_panel"):
-    """Generates a standard headless ComfyUI SDXL prompt graph"""
-    prompt_id = str(uuid.uuid4())
+COMFY_INPUT_DIR = os.path.join(os.path.dirname(config.COMFYUI_HOST), "input") if os.path.isabs(config.COMFYUI_HOST) else r"C:\ComfyUI\input"
+
+def ensure_ref_image(ref_image_path):
+    """Ensures reference image exists inside ComfyUI input folder and returns its basename"""
+    if not ref_image_path or not os.path.exists(ref_image_path):
+        return None
+    os.makedirs(COMFY_INPUT_DIR, exist_ok=True)
+    basename = os.path.basename(ref_image_path)
+    dest_path = os.path.join(COMFY_INPUT_DIR, basename)
+    if os.path.abspath(ref_image_path) != os.path.abspath(dest_path):
+        shutil.copyfile(ref_image_path, dest_path)
+    return basename
+
+def build_sdxl_workflow(prompt_text, negative_text, ref_image_basename=None, ipadapter_weight=0.7, output_prefix="manhwa_panel"):
+    """Generates a headless ComfyUI SDXL prompt graph, optionally with IP-Adapter character conditioning"""
+    model_source = ["4", 0]
+    extra_nodes = {}
+
+    if ref_image_basename:
+        # IP-Adapter conditioning nodes
+        extra_nodes = {
+            "10": {
+                "inputs": {
+                    "ipadapter_file": "ip-adapter-plus_sdxl_vit-h.safetensors"
+                },
+                "class_type": "IPAdapterModelLoader"
+            },
+            "11": {
+                "inputs": {
+                    "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+                },
+                "class_type": "CLIPVisionLoader"
+            },
+            "12": {
+                "inputs": {
+                    "image": ref_image_basename
+                },
+                "class_type": "LoadImage"
+            },
+            "13": {
+                "inputs": {
+                    "weight": float(ipadapter_weight),
+                    "weight_type": "linear",
+                    "combine_embeds": "concat",
+                    "start_at": 0.0,
+                    "end_at": 1.0,
+                    "embeds_scaling": "V only",
+                    "model": ["4", 0],
+                    "ipadapter": ["10", 0],
+                    "image": ["12", 0],
+                    "clip_vision": ["11", 0]
+                },
+                "class_type": "IPAdapterAdvanced"
+            }
+        }
+        model_source = ["13", 0]
+
     workflow = {
         "3": {
             "inputs": {
@@ -20,8 +76,8 @@ def build_sdxl_workflow(prompt_text, negative_text, output_prefix="manhwa_panel"
                 "cfg": 7.0,
                 "sampler_name": "euler_ancestral",
                 "scheduler": "karras",
-                "denoise": 1,
-                "model": ["4", 0],
+                "denoise": 1.0,
+                "model": model_source,
                 "positive": ["6", 0],
                 "negative": ["7", 0],
                 "latent_image": ["5", 0]
@@ -71,6 +127,8 @@ def build_sdxl_workflow(prompt_text, negative_text, output_prefix="manhwa_panel"
             "class_type": "SaveImage"
         }
     }
+
+    workflow.update(extra_nodes)
     return workflow
 
 def queue_prompt(prompt_workflow, client_id):
@@ -84,14 +142,21 @@ def download_image(filename, subfolder, folder_type, dest_path):
     url = f"{config.COMFYUI_HOST}/view?{params}"
     urllib.request.urlretrieve(url, dest_path)
 
-def generate_panel(prompt_text, negative_text, output_path):
-    """Sync call to ComfyUI to render a panel image"""
+def generate_panel(prompt_text, negative_text, output_path, ref_image_path=None, ipadapter_weight=0.7):
+    """Sync call to ComfyUI to render a panel image with optional IP-Adapter consistency"""
     client_id = str(uuid.uuid4())
-    workflow = build_sdxl_workflow(prompt_text, negative_text)
+    ref_basename = ensure_ref_image(ref_image_path) if ref_image_path else None
+    
+    workflow = build_sdxl_workflow(
+        prompt_text=prompt_text,
+        negative_text=negative_text,
+        ref_image_basename=ref_basename,
+        ipadapter_weight=ipadapter_weight
+    )
     
     prompt_res = queue_prompt(workflow, client_id)
     prompt_id = prompt_res.get('prompt_id')
-    print(f"Queued ComfyUI prompt {prompt_id}, awaiting execution...")
+    print(f"Queued ComfyUI prompt {prompt_id} (IPAdapter: {bool(ref_basename)}), awaiting execution...")
     
     ws_url = f"{config.COMFYUI_WS}?clientId={client_id}"
     ws = websocket.create_connection(ws_url)
@@ -120,12 +185,16 @@ def generate_panel(prompt_text, negative_text, output_path):
                         output_filename = output_images[0].get('filename')
                         output_subfolder = output_images[0].get('subfolder', '')
                         output_type = output_images[0].get('type', 'output')
+            elif msg_type == 'execution_error':
+                ws.close()
+                raise RuntimeError(f"ComfyUI execution error: {data}")
         else:
             continue
             
     ws.close()
     
     if output_filename:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         download_image(output_filename, output_subfolder, output_type, output_path)
         print(f"Panel downloaded to {output_path}")
         return output_path

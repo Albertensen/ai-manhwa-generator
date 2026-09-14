@@ -9,6 +9,8 @@ export interface ManhwaProject {
   updated_at: string;
   characters?: ManhwaCharacter[];
   scenes?: ManhwaScene[];
+  video_url?: string | null;
+  video_job?: ManhwaVideoJob | null;
 }
 
 export interface ManhwaCharacter {

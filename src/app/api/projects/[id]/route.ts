@@ -23,11 +23,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .eq('project_id', id)
       .order('scene_order', { ascending: true });
 
+    const { data: videoJobs } = await supabaseAdmin
+      .from('manhwa_video_jobs')
+      .select('*')
+      .eq('project_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const latestJob = videoJobs?.[0] || null;
+
     return NextResponse.json({
       project: {
         ...project,
         characters: characters || [],
         scenes: scenes || [],
+        video_job: latestJob,
+        video_url: latestJob?.video_url || null,
       }
     });
   } catch (err: any) {

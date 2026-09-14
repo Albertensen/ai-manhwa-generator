@@ -97,6 +97,31 @@ export default function StudioPage() {
     fetchProjects();
   }, []);
 
+  // Live polling when active project has scenes in progress
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const hasUnfinished = (activeProject.scenes || []).some(
+      (s: any) => s.status !== 'ready' && s.status !== 'failed'
+    );
+    if (!hasUnfinished && activeProject.video_url) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/projects/${activeProject.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.project) {
+            setActiveProject((prev: any) => (prev?.id === data.project.id ? data.project : prev));
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [activeProject?.id, activeProject?.scenes, activeProject?.video_url]);
+
   const handlePresetChange = (presetName: string) => {
     setStylePreset(presetName);
     if (stylePresets[presetName]) {
@@ -365,6 +390,43 @@ export default function StudioPage() {
               )}
             </div>
 
+            {/* Final Episode Video Player */}
+            {activeProject?.video_url && (
+              <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-indigo-950/50 via-purple-950/30 to-slate-900 border border-indigo-500/40 shadow-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                      <Film className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white tracking-wide">
+                        Episode Final Cut Preview
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        Full stitched manhwa recap video with cinematic BGM & Ken Burns zoom
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={activeProject.video_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition flex items-center space-x-1.5"
+                  >
+                    <span>Download MP4</span>
+                  </a>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-800 bg-black/80 flex justify-center">
+                  <video
+                    controls
+                    src={activeProject.video_url}
+                    className="w-full max-h-[440px] aspect-video object-contain"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Scenes Timeline */}
             <div className="mt-6 space-y-4">
               {!activeProject || !activeProject.scenes || activeProject.scenes.length === 0 ? (
@@ -432,20 +494,34 @@ export default function StudioPage() {
 
                     {/* Media attachments if rendered */}
                     {(scene.image_url || scene.audio_url) && (
-                      <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
-                        {scene.image_url ? (
-                          <div className="flex items-center space-x-2 text-xs text-emerald-400">
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <span>Panel Rendered</span>
+                      <div className="mt-3 pt-3 border-t border-slate-800 space-y-3">
+                        {scene.image_url && (
+                          <div className="overflow-hidden rounded-lg border border-slate-800 bg-black/40">
+                            <img
+                              src={scene.image_url}
+                              alt={`Scene ${scene.scene_order} panel`}
+                              className="w-full max-h-72 object-cover rounded-lg hover:scale-105 transition-transform duration-300"
+                            />
                           </div>
-                        ) : null}
-
-                        {scene.audio_url ? (
-                          <div className="flex items-center space-x-2 text-xs text-indigo-400">
-                            <Volume2 className="w-3.5 h-3.5" />
-                            <span>Audio Voiced</span>
-                          </div>
-                        ) : null}
+                        )}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                          {scene.image_url && (
+                            <div className="flex items-center space-x-2 text-xs text-emerald-400">
+                              <ImageIcon className="w-3.5 h-3.5" />
+                              <span>Panel Rendered</span>
+                            </div>
+                          )}
+                          {scene.audio_url && (
+                            <div className="flex items-center space-x-2 w-full sm:w-auto">
+                              <Volume2 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                              <audio
+                                controls
+                                src={scene.audio_url}
+                                className="h-7 w-full sm:w-60 accent-indigo-500"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
