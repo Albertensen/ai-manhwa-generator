@@ -5,6 +5,7 @@ export interface ManhwaProject {
   genre: string;
   art_style: string;
   status: 'draft' | 'generating_story' | 'story_ready' | 'rendering' | 'stitching' | 'completed';
+  production_mode?: 'full_motion' | 'classic_2d';
   created_at: string;
   updated_at: string;
   characters?: ManhwaCharacter[];
@@ -18,7 +19,7 @@ export interface ManhwaCharacter {
   project_id: string;
   name: string;
   gender: string;
-  role: 'protagonist' | 'antagonist' | 'supporting';
+  role: 'protagonist' | 'heroine' | 'antagonist' | 'supporting' | 'mentor';
   appearance_locked_prompt: string;
   negative_prompt: string;
   reference_image_url?: string;

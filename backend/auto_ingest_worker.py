@@ -160,15 +160,24 @@ def find_latest_active_project(project_id_arg: str = None, project_file_arg: str
     return None
 
 
+MEDIA_IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp"]
+MEDIA_VIDEO_EXTS = [".mp4", ".webm", ".mov", ".mkv"]
+ALL_MEDIA_EXTS = MEDIA_VIDEO_EXTS + MEDIA_IMAGE_EXTS
+
 def is_valid_video_file(file_path: Path) -> bool:
-    """Verifies that the file exists, has size > 15KB, and has valid media stream."""
+    """Verifies that the file exists and is a valid video or image file."""
     try:
         if not file_path.exists():
             return False
-        if file_path.stat().st_size < 15000:
-            return False
-        dur = video_composer.get_media_duration(str(file_path))
-        return dur > 0.5
+        ext = file_path.suffix.lower()
+        if ext in MEDIA_IMAGE_EXTS:
+            return file_path.stat().st_size > 2000  # valid image
+        if ext in MEDIA_VIDEO_EXTS:
+            if file_path.stat().st_size < 15000:
+                return False
+            dur = video_composer.get_media_duration(str(file_path))
+            return dur > 0.5
+        return False
     except Exception:
         return False
 
@@ -193,16 +202,18 @@ def scan_and_sort_clips(
     p_dir = PROJECT_CLIPS_DIR / project_id
     p_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check already verified scene clips in project_clips
+    # Check already verified scene clips (video or 2D image panel) in project_clips
     existing_scenes = {}
     for i in range(1, total_scenes + 1):
-        target = p_dir / f"scene_{i:03d}.mp4"
-        if is_valid_video_file(target):
-            # Check if this clip was created after min_timestamp
-            if target.stat().st_mtime >= min_timestamp:
-                existing_scenes[i] = target
+        for candidate_ext in ALL_MEDIA_EXTS:
+            target = p_dir / f"scene_{i:03d}{candidate_ext}"
+            if is_valid_video_file(target):
+                # Check if this clip was created after min_timestamp
+                if target.stat().st_mtime >= min_timestamp:
+                    existing_scenes[i] = target
+                    break
 
-    video_exts = [".mp4", ".webm", ".mov", ".mkv"]
+    video_exts = ALL_MEDIA_EXTS
     search_dirs = [proj_raw_dir, RAW_DOWNLOADS_DIR]
     if scan_windows_downloads and WIN_DOWNLOADS_DIR.exists():
         search_dirs.append(WIN_DOWNLOADS_DIR)

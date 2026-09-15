@@ -31,21 +31,33 @@ import {
   Eye,
   Sliders,
   ShieldCheck,
-  Video
+  Video,
+  UserCheck,
+  Users,
+  Plus,
+  Zap
 } from 'lucide-react';
-import { ManhwaProject, ManhwaScene } from '@/lib/types';
+import { ManhwaProject, ManhwaScene, ManhwaCharacter } from '@/lib/types';
+
+interface WizardCharacter {
+  id: string;
+  name: string;
+  role: 'protagonist' | 'heroine' | 'antagonist' | 'supporting' | 'mentor';
+  appearance_locked_prompt: string;
+  reference_image_url?: string | null;
+  is_locked: boolean;
+}
 
 export default function StudioPage() {
   // Wizard Navigation: Step 1 to Step 5
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [showStorySetup, setShowStorySetup] = useState<boolean>(true);
 
+  // Production Mode: Mode A (Full-Motion Meta AI) vs Mode B (Classic 2D Zero-Motion / Fast)
+  const [productionMode, setProductionMode] = useState<'full_motion' | 'classic_2d'>('full_motion');
+
   // Global Story Setup State
   const [projectTitle, setProjectTitle] = useState('Kebangkitan Sang Penguasa Bayangan');
-  const [characterName, setCharacterName] = useState('Kang Min-Woo');
-  const [characterLockPrompt, setCharacterLockPrompt] = useState(
-    '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, athletic silhouette, black hooded long coat with glowing purple mana aura, high contrast manhwa art style, sharp lineart, 8k masterpiece'
-  );
   const [stylePreset, setStylePreset] = useState('Solo Leveling / Dark Fantasy');
   const [bgmPreset, setBgmPreset] = useState<'epic_battle' | 'mystery_dungeon' | 'melancholy_sad'>('epic_battle');
   const [storyIdea, setStoryIdea] = useState(
@@ -53,17 +65,42 @@ export default function StudioPage() {
   );
   const [sceneCount, setSceneCount] = useState<number>(5);
 
-  // Character Master State (Step 1)
-  const [isCharacterLocked, setIsCharacterLocked] = useState<boolean>(true);
-  const [uploadedCharacterUrl, setUploadedCharacterUrl] = useState<string | null>(null);
+  // Multi-Character State (Step 1)
+  const [characterList, setCharacterList] = useState<WizardCharacter[]>([
+    {
+      id: 'char_mc',
+      name: 'Kang Min-Woo',
+      role: 'protagonist',
+      appearance_locked_prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, athletic silhouette, black hooded long coat with glowing purple mana aura, high contrast manhwa art style, sharp lineart, 8k masterpiece',
+      reference_image_url: null,
+      is_locked: true,
+    },
+    {
+      id: 'char_heroine',
+      name: 'Seraphina',
+      role: 'heroine',
+      appearance_locked_prompt: '1girl, solo, long silver ponytail, piercing emerald green eyes, elegant white and gold holy knight armor, glowing holy sword, slender athletic build, beautiful webtoon heroine face, 8k masterpiece',
+      reference_image_url: null,
+      is_locked: true,
+    },
+    {
+      id: 'char_villain',
+      name: 'Demon King Malakor',
+      role: 'antagonist',
+      appearance_locked_prompt: '1demon lord, solo, massive muscular frame, obsidian spiked heavy plate armor, glowing blood-red eyes, curved demonic horns, crackling crimson dark lightning aura, terrifying aura, 8k',
+      reference_image_url: null,
+      is_locked: true,
+    }
+  ]);
+  const [activeCharIndex, setActiveCharIndex] = useState<number>(0);
   const [isUploadingChar, setIsUploadingChar] = useState<boolean>(false);
   const charFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Assembly & Video Drop State (Step 5)
+  // Assembly & Media Drop State (Step 5)
   const [uploadedClips, setUploadedClips] = useState<Record<number, string>>({});
   const [isUploadingClips, setIsUploadingClips] = useState<boolean>(false);
   const [isAssembling, setIsAssembling] = useState<boolean>(false);
-  const videoClipsInputRef = useRef<HTMLInputElement>(null);
+  const mediaFileInputRef = useRef<HTMLInputElement>(null);
 
   // Projects & App State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -74,7 +111,7 @@ export default function StudioPage() {
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const [showRawDrawer, setShowRawDrawer] = useState<boolean>(false);
 
-  // Presets mapping
+  // Style Presets Mapping
   const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
     'Solo Leveling / Dark Fantasy': {
       prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, black long coat, dark purple shadow aura, solo leveling art style, dramatic rim lighting, 8k',
@@ -127,38 +164,120 @@ export default function StudioPage() {
     }
   ];
 
-  // Helper functions for Step 1: Character Variations
-  const getCharacterVariations = () => {
+  const currentChar = characterList[activeCharIndex] || characterList[0];
+
+  // Helper functions for Step 1: Character Variations per selected character
+  const getCharacterVariations = (char: WizardCharacter) => {
+    const isFemale = char.role === 'heroine' || char.appearance_locked_prompt.includes('1girl');
+    const isVillain = char.role === 'antagonist';
+
+    if (isVillain) {
+      return [
+        {
+          id: `${char.id}_var1`,
+          title: 'Variasi 1: Sovereign Boss Key Visual (Front View)',
+          badge: 'Boss Anchor',
+          desc: 'Sosok monster penguasa berdiri angkuh memancarkan aura kegelapan dan tatapan mengintimidasi.',
+          prompt: `masterpiece, solo portrait, front angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, menacing demonic grin, overwhelming dark Qi aura, heavy shadows, towering dark throne room, 8k resolution`,
+        },
+        {
+          id: `${char.id}_var2`,
+          title: 'Variasi 2: World-Ending Destruction Attack',
+          badge: 'Skill Kehancuran',
+          desc: 'Karakter melepaskan serangan magis dahsyat dengan partikel petir darah dan batu-batu melayang.',
+          prompt: `masterpiece, combat action shot, ${char.name}, ${char.appearance_locked_prompt}, unleashing cataclysmic dark magic sphere, shattered earth debris orbiting, crackling red lightning storms, dynamic perspective, unreal engine 5 render, 8k`,
+        },
+        {
+          id: `${char.id}_var3`,
+          title: 'Variasi 3: Terrifying Close-Up Gaze',
+          badge: 'Tatapan Monster',
+          desc: 'Fokus dekat pada mata merah membara dan ekspresi haus darah yang mematikan.',
+          prompt: `masterpiece, extreme close-up on face, ${char.name}, ${char.appearance_locked_prompt}, glowing predatory blood-red eyes, sharp fangs, dark smoke billowing from lips, dramatic low angle lighting, 8k ultra-detailed`,
+        },
+      ];
+    }
+
+    if (isFemale) {
+      return [
+        {
+          id: `${char.id}_var1`,
+          title: 'Variasi 1: Noble Key Visual (Front 3/4)',
+          badge: 'Heroine Anchor',
+          desc: 'Pose anggun khas karakter utama wanita dengan gaun atau zirah berkilau di bawah pencahayaan lembut.',
+          prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, exquisite facial features, expressive eyes, glowing holy particles drifting, elegant composition, 8k resolution`,
+        },
+        {
+          id: `${char.id}_var2`,
+          title: 'Variasi 2: Resolute Combat Stance / Awakening',
+          badge: 'Mode Bertarung',
+          desc: 'Pose siaga memegang senjata dengan aura suci berkilau dan rambut berkibar ditiup angin kencang.',
+          prompt: `masterpiece, combat stance, ${char.name}, ${char.appearance_locked_prompt}, holding radiant glowing weapon, divine energy ribbons floating, dynamic wind blown hair, dark ruined background with bright volumetric rays, 8k`,
+        },
+        {
+          id: `${char.id}_var3`,
+          title: 'Variasi 3: Emotional Tear / Determination Close-Up',
+          badge: 'Close-Up Emosional',
+          desc: 'Fokus dramatis pada tatapan penuh tekad dan detail pantulan cahaya di mata.',
+          prompt: `masterpiece, close-up on face, ${char.name}, ${char.appearance_locked_prompt}, glistening determined eyes, soft cinematic bokeh, dramatic soft rim light, trending on webtoon, masterpiece 8k`,
+        },
+      ];
+    }
+
+    // Default MC Protagonist
     return [
       {
-        id: 'var_1',
+        id: `${char.id}_var1`,
         title: 'Variasi 1: Masterpiece Key Visual (Front 3/4)',
-        badge: 'Rekomendasi Utama',
-        desc: 'Pose standar key visual webtoon dengan tatapan tajam dan pencahayaan kontras tinggi. Ideal sebagai referensi paten di AutoFlow.',
-        prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${characterName}, ${characterLockPrompt}, clean lineart, expressive sharp eyes, high contrast rim lighting, dark studio atmospheric background, 8k resolution, highly consistent master character sheet`,
+        badge: 'Rekomendasi MC',
+        desc: 'Pose standar key visual webtoon dengan tatapan tajam dan pencahayaan kontras tinggi untuk konsistensi wajah.',
+        prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, clean lineart, expressive sharp eyes, high contrast rim lighting, dark studio atmospheric background, 8k resolution`,
       },
       {
-        id: 'var_2',
+        id: `${char.id}_var2`,
         title: 'Variasi 2: Awakened State & Surging Mana Aura',
-        badge: 'Mode Tempur / Awakening',
-        desc: 'Karakter dikelilingi aura energi magis berkilau dengan efek partikel melayang untuk adegan aksi intensitas tinggi.',
-        prompt: `masterpiece, solo, combat battle stance, ${characterName}, ${characterLockPrompt}, surging glowing mana aura enveloping body, floating hair strands, crackling electricity embers, dark volumetric fog, dynamic manhwa angle, unreal engine 5 render, 8k`,
+        badge: 'Mode Tempur MC',
+        desc: 'Karakter dikelilingi aura energi magis berkilau dengan efek partikel melayang untuk adegan aksi intens.',
+        prompt: `masterpiece, solo, combat battle stance, ${char.name}, ${char.appearance_locked_prompt}, surging glowing mana aura enveloping body, floating hair strands, crackling electricity embers, dark volumetric fog, dynamic manhwa angle, unreal engine 5 render, 8k`,
       },
       {
-        id: 'var_3',
+        id: `${char.id}_var3`,
         title: 'Variasi 3: Extreme Close-Up & Piercing Gaze',
         badge: 'Close-Up Dramatis',
-        desc: 'Fokus ketat pada ekspresi wajah, detail mata bersinar tajam, dan bayangan dramatis untuk momen puncak emosional.',
-        prompt: `masterpiece, extreme close-up on face, ${characterName}, ${characterLockPrompt}, razor sharp jawline, glowing piercing eyes with intricate iris details, dynamic wind blowing hair across forehead, dramatic shadow cast, high tension webtoon panel, ultra-detailed 8k`,
-      },
-      {
-        id: 'var_4',
-        title: 'Variasi 4: Silhouette & Shadow Wings / Sovereign',
-        badge: 'Pose Megah / Silhouette',
-        desc: 'Pose penuh dengan sayap bayangan atau jubah berkibar di atas reruntuhan batu, memberikan siluet megah sang penguasa.',
-        prompt: `masterpiece, dynamic full-body shot, ${characterName}, ${characterLockPrompt}, standing on shattered dungeon stone, gigantic shadow wings unfurling behind back, dark vortex sky, particles drifting upward, epic manhwa cover art, 8k wallpaper`,
+        desc: 'Fokus ketat pada ekspresi wajah, detail mata bersinar tajam, dan bayangan dramatis untuk tensi tinggi.',
+        prompt: `masterpiece, extreme close-up on face, ${char.name}, ${char.appearance_locked_prompt}, razor sharp jawline, glowing piercing eyes with intricate iris details, dynamic wind blowing hair across forehead, dramatic shadow cast, 8k`,
       },
     ];
+  };
+
+  // Update current character in state
+  const updateCurrentChar = (patch: Partial<WizardCharacter>) => {
+    setCharacterList((prev) => {
+      const copy = [...prev];
+      copy[activeCharIndex] = { ...copy[activeCharIndex], ...patch };
+      return copy;
+    });
+  };
+
+  const handleAddNewCharacter = () => {
+    if (characterList.length >= 4) return;
+    const newIdx = characterList.length + 1;
+    const newChar: WizardCharacter = {
+      id: `char_${Date.now()}`,
+      name: `Karakter ${newIdx}`,
+      role: 'supporting',
+      appearance_locked_prompt: '1man, neat dark hair, brown eyes, adventurer leather armor, clean webtoon lineart, 8k',
+      reference_image_url: null,
+      is_locked: true,
+    };
+    setCharacterList([...characterList, newChar]);
+    setActiveCharIndex(characterList.length);
+  };
+
+  const handleRemoveCharacter = (index: number) => {
+    if (characterList.length <= 1) return;
+    const filtered = characterList.filter((_, i) => i !== index);
+    setCharacterList(filtered);
+    setActiveCharIndex(Math.max(0, index - 1));
   };
 
   // Helper functions for Step 2 & 3: Batch Exports
@@ -167,7 +286,7 @@ export default function StudioPage() {
     const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
     return sorted.map((s) => {
       const cleanVisual = s.visual_prompt.replace(/[\r\n]+/g, ' ').trim();
-      return `Scene ${s.scene_order}: ${cleanVisual} | Character: ${characterName}, ${characterLockPrompt} | Art Style: ${stylePreset}, masterpiece manhwa webtoon style, high contrast, 8k resolution`;
+      return `Scene ${s.scene_order}: ${cleanVisual} | Style: ${stylePreset}, masterpiece manhwa webtoon style, high contrast, 8k resolution`;
     }).join('\n');
   };
 
@@ -175,7 +294,7 @@ export default function StudioPage() {
     const motion = scene.camera_motion || 'zoom_in';
     const visual = (scene.visual_prompt || '').toLowerCase();
     
-    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('dagger') || visual.includes('blade')) {
+    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('clash')) {
       return 'Dynamic explosive camera push forward, violent surging mana aura, lightning and sparks flying outward, intense anime action choreography, 3D parallax depth, high quality animation';
     }
     if (motion === 'zoom_in') {
@@ -192,9 +311,6 @@ export default function StudioPage() {
     }
     if (motion === 'tilt_up') {
       return 'Dramatic towering vertical camera tilt up from ground to ceiling, soaring energy pillars, epic scale reveal, anime lighting';
-    }
-    if (motion === 'orbital') {
-      return 'Cinematic 3D orbital camera arc around character, shifting rim light reflections, floating magic particles, smooth animation';
     }
     return 'Cinematic subtle organic movement, gentle breathing, clothes fluttering slightly in the wind, soft glowing particle drift, anime 3D depth';
   };
@@ -230,21 +346,25 @@ export default function StudioPage() {
   const handleDownloadPackage = () => {
     if (!activeProject) return;
     const data = {
-      version: '1.0',
+      version: '2.0',
       project_id: activeProject.id,
       title: activeProject.title,
       synopsis: activeProject.synopsis,
       genre: activeProject.genre,
       art_style: activeProject.art_style || stylePreset,
+      production_mode: productionMode,
       bgm_preset: bgmPreset,
       total_scenes: activeProject.scenes?.length || 0,
-      character: {
-        name: characterName,
-        appearance_locked_prompt: characterLockPrompt,
-        reference_image_url: uploadedCharacterUrl || activeProject.characters?.[0]?.reference_image_url || null,
-      },
+      characters: characterList.map((c) => ({
+        name: c.name,
+        role: c.role,
+        appearance_locked_prompt: c.appearance_locked_prompt,
+        reference_image_url: c.reference_image_url || null,
+        is_locked: c.is_locked,
+      })),
       scenes: (activeProject.scenes || []).map((s) => ({
         scene_order: s.scene_order,
+        character_name: s.character_name,
         narration_text: s.narration_text,
         visual_prompt: s.visual_prompt,
         camera_motion: s.camera_motion,
@@ -285,7 +405,7 @@ export default function StudioPage() {
     }
   };
 
-  // Fetch single project with scenes
+  // Fetch single project with scenes & characters
   const loadProjectDetail = async (id: string) => {
     try {
       const res = await fetch(`/api/projects/${id}`);
@@ -294,11 +414,19 @@ export default function StudioPage() {
         setActiveProject(data.project);
         if (data.project.title) setProjectTitle(data.project.title);
         if (data.project.synopsis) setStoryIdea(data.project.synopsis);
+        if (data.project.production_mode) setProductionMode(data.project.production_mode);
+
         if (data.project.characters && data.project.characters.length > 0) {
-          const char = data.project.characters[0];
-          if (char.name) setCharacterName(char.name);
-          if (char.appearance_locked_prompt) setCharacterLockPrompt(char.appearance_locked_prompt);
-          if (char.reference_image_url) setUploadedCharacterUrl(char.reference_image_url);
+          const mappedChars: WizardCharacter[] = data.project.characters.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            role: c.role || 'protagonist',
+            appearance_locked_prompt: c.appearance_locked_prompt || '',
+            reference_image_url: c.reference_image_url || null,
+            is_locked: true,
+          }));
+          setCharacterList(mappedChars);
+          setActiveCharIndex(0);
         }
         if (data.project.scenes) {
           setSceneCount(data.project.scenes.length);
@@ -316,7 +444,7 @@ export default function StudioPage() {
   // Polling project updates when stitching
   useEffect(() => {
     if (!activeProject?.id) return;
-    if (activeProject.status !== 'stitching' && activeProject.video_job?.status !== 'pending_assembly') return;
+    if (activeProject.status !== 'stitching' && (activeProject.video_job?.status as string) !== 'pending_assembly') return;
 
     const interval = setInterval(async () => {
       try {
@@ -341,7 +469,14 @@ export default function StudioPage() {
   const handlePresetChange = (presetName: string) => {
     setStylePreset(presetName);
     if (stylePresets[presetName]) {
-      setCharacterLockPrompt(stylePresets[presetName].prompt);
+      // Update MC appearance prompt
+      setCharacterList((prev) => {
+        const copy = [...prev];
+        if (copy[0]) {
+          copy[0] = { ...copy[0], appearance_locked_prompt: stylePresets[presetName].prompt };
+        }
+        return copy;
+      });
       setBgmPreset(stylePresets[presetName].defaultBgm);
     }
   };
@@ -360,8 +495,13 @@ export default function StudioPage() {
           title: projectTitle,
           storyIdea,
           genre: `${stylePreset} (BGM: ${bgmPreset})`,
-          characterName,
-          characterLockPrompt,
+          productionMode,
+          characters: characterList.map((c) => ({
+            name: c.name,
+            role: c.role,
+            appearance_locked_prompt: c.appearance_locked_prompt,
+            reference_image_url: c.reference_image_url,
+          })),
           sceneCount,
           artStyle: stylePreset,
         }),
@@ -385,21 +525,21 @@ export default function StudioPage() {
     }
   };
 
-  // Upload Master Character Image (Step 1)
+  // Upload Master Character Image for active character (Step 1)
   const handleCharacterImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     // Instant local preview
     const localUrl = URL.createObjectURL(file);
-    setUploadedCharacterUrl(localUrl);
+    updateCurrentChar({ reference_image_url: localUrl });
     setIsUploadingChar(true);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const projectId = activeProject?.id || 'master_char';
-      formData.append('path', `characters/${projectId}_${Date.now()}.png`);
+      const projectId = activeProject?.id || 'char_master';
+      formData.append('path', `characters/${projectId}_${currentChar.id}_${Date.now()}.png`);
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -409,7 +549,7 @@ export default function StudioPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.url) {
-          setUploadedCharacterUrl(json.url);
+          updateCurrentChar({ reference_image_url: json.url });
         }
       }
     } catch (err) {
@@ -419,8 +559,8 @@ export default function StudioPage() {
     }
   };
 
-  // Handle Multi-file Video Drop (Step 5)
-  const handleVideoClipsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Media Drop in Step 5 (MP4 for Mode A, PNG/JPG for Mode B)
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -432,18 +572,18 @@ export default function StudioPage() {
       const matchNum = file.name.match(/\d+/);
       const sceneIndex = matchNum ? parseInt(matchNum[0], 10) : i + 1;
       
-      const localUrl = URL.createObjectURL(file);
       newMap[sceneIndex] = file.name;
 
-      // Also try uploading to Supabase
+      // Also upload to Supabase bucket
       try {
         const formData = new FormData();
         formData.append('file', file);
         const projectId = activeProject?.id || 'temp';
-        formData.append('path', `project_clips/${projectId}/scene_${sceneIndex.toString().padStart(3, '0')}.mp4`);
+        const ext = file.name.split('.').pop() || (productionMode === 'classic_2d' ? 'png' : 'mp4');
+        formData.append('path', `project_clips/${projectId}/scene_${sceneIndex.toString().padStart(3, '0')}.${ext}`);
         await fetch('/api/upload', { method: 'POST', body: formData });
       } catch (err) {
-        console.warn('Clip upload warning:', err);
+        console.warn('Media upload warning:', err);
       }
     }
 
@@ -464,6 +604,7 @@ export default function StudioPage() {
         body: JSON.stringify({
           project_id: activeProject.id,
           bgm_preset: bgmPreset,
+          production_mode: productionMode,
         }),
       });
 
@@ -478,10 +619,9 @@ export default function StudioPage() {
     }
   };
 
-  // Calculate readiness of clips in Step 5
   const totalRequiredScenes = activeProject?.scenes?.length || sceneCount;
   const verifiedClipsCount = Object.keys(uploadedClips).length;
-  const isVideoJobActive = activeProject?.status === 'stitching' || activeProject?.video_job?.status === 'pending_assembly' || isAssembling;
+  const isVideoJobActive = activeProject?.status === 'stitching' || (activeProject?.video_job?.status as string) === 'pending_assembly' || isAssembling;
   const isVideoJobComplete = activeProject?.status === 'completed' || !!activeProject?.video_url;
 
   return (
@@ -493,13 +633,15 @@ export default function StudioPage() {
           <div>
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium mb-3">
               <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-300" />
-              <span>Guided Production Wizard • YouTube Recap Workflow</span>
+              <span>
+                {productionMode === 'classic_2d' ? 'Mode B: Classic 2D Manhwa Recap (Zero-Motion)' : 'Mode A: Full-Motion Video (Meta AI I2V)'}
+              </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
               <span>AI Manhwa &amp; Anime Recap Studio</span>
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Alur kerja terstruktur dari ide cerita, loop karakter AutoFlow, batch prompt Meta AI, hingga perakitan video vertikal 1080x1920 siap tayang.
+              Alur kerja terstruktur dari ide cerita, multi-character lock, batch prompt AutoFlow, hingga perakitan video vertikal 1080x1920.
             </p>
           </div>
 
@@ -549,10 +691,10 @@ export default function StudioPage() {
               </span>
               <div>
                 <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Global Setup: Form Input Cerita &amp; Blueprint Sutradara
+                  Global Setup: Pemilihan Mode &amp; Blueprint Cerita
                 </h2>
                 <p className="text-[11px] text-slate-400">
-                  Masukkan sinopsis atau hasil brainstorming Gemini untuk menghasilkan seluruh adegan cerita dan prompt sinematik.
+                  Pilih mode produksi, masukkan sinopsis, dan tentukan karakter utama serta gaya visual manhwa.
                 </p>
               </div>
             </div>
@@ -576,37 +718,79 @@ export default function StudioPage() {
             )}
           </div>
 
-          <form onSubmit={handleGenerateStory} className="space-y-5">
-            {/* Judul Proyek & Nama Karakter */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Judul Proyek / Episode
-                </label>
-                <input
-                  type="text"
-                  value={projectTitle}
-                  onChange={(e) => setProjectTitle(e.target.value)}
-                  placeholder="Contoh: Kebangkitan Belati Bayangan: Dendam Kaelen"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                />
+          {/* Toggle Sakelar Mode Produksi (Mode A vs Mode B) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              Pilihan Mode Produksi (Production Mode)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Mode A: Full-Motion */}
+              <div
+                onClick={() => setProductionMode('full_motion')}
+                className={`p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3.5 ${
+                  productionMode === 'full_motion'
+                    ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-lg shadow-indigo-500/10'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Video className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-white">Mode A: Full-Motion Video</span>
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-mono text-indigo-300">
+                      Meta AI I2V
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    AutoFlow gambar -&gt; Animasikan pergerakan kamera 3D di Meta AI -&gt; Ingest video klip MP4.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Nama Karakter Utama (Protagonis)
-                </label>
-                <input
-                  type="text"
-                  value={characterName}
-                  onChange={(e) => setCharacterName(e.target.value)}
-                  placeholder="Contoh: Kaelen, Kang Min-Woo, Jin-Woo"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                />
+              {/* Mode B: Classic 2D Manhwa Recap */}
+              <div
+                onClick={() => setProductionMode('classic_2d')}
+                className={`p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3.5 ${
+                  productionMode === 'classic_2d'
+                    ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-lg shadow-emerald-500/10'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-white">Mode B: Classic 2D Manhwa Recap</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono text-emerald-300">
+                      Zero-Motion / Cepat
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    AutoFlow gambar statis (.png/.jpg) -&gt; Langsung stitch dengan narasi, subtitle karaoke .ass &amp; transisi Ken Burns. Tanpa render Meta AI!
+                  </p>
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* Ide Cerita / Sinopsis Besar */}
+          <form onSubmit={handleGenerateStory} className="space-y-5">
+            {/* Judul Proyek & Sinopsis */}
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Judul Proyek / Episode
+              </label>
+              <input
+                type="text"
+                value={projectTitle}
+                onChange={(e) => setProjectTitle(e.target.value)}
+                placeholder="Contoh: Kebangkitan Belati Bayangan: Dendam Kaelen"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
                 Ide Cerita / Sinopsis / Hasil Brainstorming Gemini
@@ -679,7 +863,7 @@ export default function StudioPage() {
                 {isGenerating ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Merancang Storyboard &amp; Prompt Sinematik...</span>
+                    <span>Merancang Storyboard &amp; Multi-Karakter...</span>
                   </>
                 ) : (
                   <>
@@ -697,11 +881,16 @@ export default function StudioPage() {
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-3 shadow-lg">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {[
-            { step: 1, title: 'Karakter Master', subtitle: 'AutoFlow Loop', icon: Lock },
+            { step: 1, title: 'Multi-Karakter', subtitle: 'AutoFlow Loop', icon: Users },
             { step: 2, title: 'Visual Prompts', subtitle: 'Batch AutoFlow', icon: ImageIcon },
-            { step: 3, title: 'Motion Prompts', subtitle: 'Batch Meta AI', icon: Film },
+            { 
+              step: 3, 
+              title: productionMode === 'classic_2d' ? '2D Ken Burns' : 'Motion Prompts', 
+              subtitle: productionMode === 'classic_2d' ? 'Transisi Komik (Skip Meta)' : 'Batch Meta AI', 
+              icon: Film 
+            },
             { step: 4, title: 'BGM & Narasi', subtitle: 'Edge-TTS Sound', icon: Music },
-            { step: 5, title: 'Final Assembly', subtitle: 'Stitch & Output', icon: Clapperboard },
+            { step: 5, title: 'Final Assembly', subtitle: productionMode === 'classic_2d' ? 'Stitch Panel 2D' : 'Stitch Video MP4', icon: Clapperboard },
           ].map((item) => {
             const Icon = item.icon;
             const isActive = currentStep === item.step;
@@ -742,7 +931,7 @@ export default function StudioPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* STEP 1: Pembuatan & Penguncian Karakter Master (AutoFlow Character Loop) */}
+      {/* STEP 1: Multi-Character Master Creation & Locking */}
       {/* ========================================================================= */}
       {currentStep === 1 && (
         <div className="space-y-6 animate-fadeIn">
@@ -750,45 +939,45 @@ export default function StudioPage() {
           <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[11px] font-semibold text-indigo-400 mb-1.5">
-                <span>STEP 1 • AUTOFLOW CHARACTER LOOP</span>
+                <span>STEP 1 • MULTI-CHARACTER AUTOFLOW LOOP</span>
               </div>
               <h2 className="text-lg font-bold text-white">
-                Pembuatan &amp; Penguncian Karakter Master (Character Anchor)
+                Multi-Character Locking (Protagonis, Heroine &amp; Antagonis)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Pilih variasi prompt di bawah, paste ke Google Flow / AutoFlow untuk generate contoh gambar. Download 1 gambar terbaik, upload ke sini, lalu kunci karakternya.
+                Kunci konsistensi visual hingga 3–4 karakter berbeda. Pilih karakter di bawah untuk menyalin variasi prompt atau mengunggah gambar referensi master.
               </p>
             </div>
 
             <div className="flex items-center space-x-3">
               <button
                 type="button"
-                onClick={() => setIsCharacterLocked(!isCharacterLocked)}
+                onClick={() => updateCurrentChar({ is_locked: !currentChar.is_locked })}
                 className={`inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition shadow-sm ${
-                  isCharacterLocked
+                  currentChar.is_locked
                     ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-emerald-500/10'
                     : 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-amber-500/10'
                 }`}
               >
-                {isCharacterLocked ? (
+                {currentChar.is_locked ? (
                   <>
                     <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Karakter Terkunci (LOCKED)</span>
+                    <span>{currentChar.name}: Terkunci (LOCKED)</span>
                   </>
                 ) : (
                   <>
                     <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Klik Untuk Mengunci</span>
+                    <span>Klik Untuk Mengunci {currentChar.name}</span>
                   </>
                 )}
               </button>
 
               <button
                 type="button"
-                onClick={() => copyToClipboard(characterLockPrompt, 'locked_char')}
+                onClick={() => copyToClipboard(currentChar.appearance_locked_prompt, `locked_${currentChar.id}`)}
                 className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/40 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition"
               >
-                {copiedType === 'locked_char' ? (
+                {copiedType === `locked_${currentChar.id}` ? (
                   <>
                     <Check className="w-3.5 h-3.5 text-emerald-300" />
                     <span>Tersalin ke Clipboard!</span>
@@ -796,24 +985,120 @@ export default function StudioPage() {
                 ) : (
                   <>
                     <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Locked Character Prompt</span>
+                    <span>Copy Locked Prompt</span>
                   </>
                 )}
               </button>
             </div>
           </div>
 
-          {/* Grid: 3-5 Variasi AI Character Prompts + Upload Dropzone */}
+          {/* Multi-Character Tab Selector */}
+          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800">
+            {characterList.map((char, idx) => {
+              const isSelected = activeCharIndex === idx;
+              return (
+                <button
+                  key={char.id}
+                  type="button"
+                  onClick={() => setActiveCharIndex(idx)}
+                  className={`inline-flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 opacity-80" />
+                  <span>{char.name}</span>
+                  <span className="px-1.5 py-0.2 rounded bg-black/40 text-[10px] uppercase font-mono">
+                    {char.role}
+                  </span>
+                  {char.is_locked && <Lock className="w-3 h-3 text-emerald-400" />}
+                </button>
+              );
+            })}
+
+            {characterList.length < 4 && (
+              <button
+                type="button"
+                onClick={handleAddNewCharacter}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Karakter</span>
+              </button>
+            )}
+          </div>
+
+          {/* Character Editor Row */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Nama Karakter
+                </label>
+                <input
+                  type="text"
+                  value={currentChar.name}
+                  onChange={(e) => updateCurrentChar({ name: e.target.value })}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                  Peran (Role)
+                </label>
+                <select
+                  value={currentChar.role}
+                  onChange={(e) => updateCurrentChar({ role: e.target.value as any })}
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="protagonist">Protagonist (MC)</option>
+                  <option value="heroine">Heroine / Ally Utama</option>
+                  <option value="antagonist">Antagonist / Boss Monster</option>
+                  <option value="supporting">Supporting / Party Member</option>
+                  <option value="mentor">Mentor / Master / Entity</option>
+                </select>
+              </div>
+
+              <div className="flex items-end justify-between">
+                {characterList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCharacter(activeCharIndex)}
+                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900 border border-rose-800 text-[11px] font-medium text-rose-300 transition"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Hapus Karakter Ini</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                Kunci Penampilan (Locked Appearance Description)
+              </label>
+              <textarea
+                rows={2}
+                value={currentChar.appearance_locked_prompt}
+                onChange={(e) => updateCurrentChar({ appearance_locked_prompt: e.target.value })}
+                className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Grid: 3 Variasi AI Character Prompts + Upload Dropzone */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Kolom Kiri: 4 Variasi Prompt Karakter Master */}
+            {/* Kolom Kiri: 3 Variasi Prompt Karakter Terpilih */}
             <div className="lg:col-span-2 space-y-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                <span>3–5 Variasi Prompt Karakter Master (AutoFlow Engine)</span>
+                <span>3 Variasi Prompt Master untuk {currentChar.name}</span>
                 <span className="text-[11px] font-normal text-slate-500">Pilih salah satu variasi untuk di-generate di Google Flow</span>
               </div>
 
               <div className="grid grid-cols-1 gap-3.5">
-                {getCharacterVariations().map((v) => (
+                {getCharacterVariations(currentChar).map((v) => (
                   <div
                     key={v.id}
                     className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
@@ -829,8 +1114,7 @@ export default function StudioPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setCharacterLockPrompt(v.prompt);
-                            setIsCharacterLocked(true);
+                            updateCurrentChar({ appearance_locked_prompt: v.prompt, is_locked: true });
                           }}
                           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-medium text-slate-300 transition"
                         >
@@ -869,7 +1153,7 @@ export default function StudioPage() {
             {/* Kolom Kanan: Upload / Dropzone Gambar Karakter Master */}
             <div className="space-y-4">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Upload Selected Character Image
+                Upload Master Image: {currentChar.name}
               </div>
 
               <div
@@ -887,25 +1171,25 @@ export default function StudioPage() {
                 {isUploadingChar ? (
                   <div className="py-8 flex flex-col items-center space-y-2">
                     <RefreshCw className="w-8 h-8 animate-spin text-indigo-400" />
-                    <span className="text-xs text-slate-300">Mengunggah gambar master ke storage...</span>
+                    <span className="text-xs text-slate-300">Mengunggah gambar ke storage...</span>
                   </div>
-                ) : uploadedCharacterUrl ? (
+                ) : currentChar.reference_image_url ? (
                   <div className="space-y-3 w-full">
                     <div className="relative aspect-[3/4] max-w-[220px] mx-auto rounded-xl overflow-hidden border-2 border-emerald-500/80 shadow-xl shadow-emerald-500/10">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={uploadedCharacterUrl}
-                        alt="Master Character"
+                        src={currentChar.reference_image_url}
+                        alt={currentChar.name}
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 border border-emerald-500 text-[10px] font-mono text-emerald-300">
-                        LOCKED
+                        {currentChar.name.toUpperCase()} LOCKED
                       </div>
                     </div>
                     <div>
                       <div className="text-xs font-bold text-emerald-400 flex items-center justify-center space-x-1">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Karakter Master Terpasang</span>
+                        <span>Master {currentChar.name} Terpasang</span>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">Klik untuk ganti gambar lain</p>
                     </div>
@@ -916,9 +1200,9 @@ export default function StudioPage() {
                       <Upload className="w-6 h-6 text-indigo-400" />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-white">Drop Gambar Master di Sini</div>
+                      <div className="text-xs font-bold text-white">Drop Gambar Master {currentChar.name}</div>
                       <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                        Masukkan 1 gambar terbaik hasil generate dari Google Flow / AutoFlow untuk referensi visual.
+                        Masukkan 1 gambar terbaik hasil generate dari Google Flow untuk referensi visual {currentChar.name}.
                       </p>
                     </div>
                     <span className="inline-block px-3 py-1 rounded-lg bg-slate-800 text-[11px] font-medium text-slate-300">
@@ -932,10 +1216,10 @@ export default function StudioPage() {
               <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
                 <div className="text-xs font-bold text-slate-200 flex items-center space-x-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Konsistensi Wajah Terjamin</span>
+                  <span>Multi-Karakter Terkunci</span>
                 </div>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Setelah karakter dikunci, prompt paten ini akan disematkan secara otomatis ke seluruh adegan di Step 2.
+                  Di Step 2, sistem otomatis menyematkan prompt visual karakter yang terlibat di setiap adegan cerita.
                 </p>
               </div>
 
@@ -968,7 +1252,7 @@ export default function StudioPage() {
                 Scene Visual Prompts (Batch AutoFlow untuk Adegan Cerita)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Seluruh adegan cerita ({activeProject?.scenes?.length || sceneCount} scene) lengkap dengan narasi bahasa Indonesia dan prompt visual siap paste massal ke AutoFlow.
+                Seluruh adegan cerita ({activeProject?.scenes?.length || sceneCount} scene) lengkap dengan narasi suara dan prompt visual yang telah menggabungkan deskripsi karakter terkait.
               </p>
             </div>
 
@@ -1053,17 +1337,14 @@ export default function StudioPage() {
                       <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
                         Scene {scene.scene_order.toString().padStart(2, '0')}
                       </span>
-                      <span className="text-xs font-bold text-white">
-                        {characterName} • {stylePreset}
+                      <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[11px] font-semibold text-slate-200">
+                        {scene.character_name || characterList[0]?.name || 'Protagonist'}
                       </span>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => copyToClipboard(
-                        `${scene.visual_prompt} | Character: ${characterName}, ${characterLockPrompt} | Art Style: ${stylePreset}, 8k resolution`,
-                        `scene_${scene.scene_order}`
-                      )}
+                      onClick={() => copyToClipboard(scene.visual_prompt, `scene_${scene.scene_order}`)}
                       className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
                     >
                       {copiedType === `scene_${scene.scene_order}` ? (
@@ -1118,10 +1399,14 @@ export default function StudioPage() {
 
             <button
               type="button"
-              onClick={() => setCurrentStep(3)}
+              onClick={() => setCurrentStep(productionMode === 'classic_2d' ? 4 : 3)}
               className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
             >
-              <span>Lanjut ke Step 3: Camera Motion Prompts</span>
+              <span>
+                {productionMode === 'classic_2d' 
+                  ? 'Lanjut ke Step 4: BGM & Narasi (Mode B Fast Track)' 
+                  : 'Lanjut ke Step 3: Camera Motion Prompts'}
+              </span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -1129,7 +1414,7 @@ export default function StudioPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* STEP 3: Camera Motion Prompts (Batch Meta AI) */}
+      {/* STEP 3: Camera Motion Prompts / 2D Ken Burns Transition */}
       {/* ========================================================================= */}
       {currentStep === 3 && (
         <div className="space-y-6 animate-fadeIn">
@@ -1137,45 +1422,76 @@ export default function StudioPage() {
           <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[11px] font-semibold text-sky-400 mb-1.5">
-                <span>STEP 3 • META AI 3D MOTION ENGINE</span>
+                <span>
+                  {productionMode === 'classic_2d' ? 'STEP 3 • 2D KEN BURNS & PANEL TRANSITION' : 'STEP 3 • META AI 3D MOTION ENGINE'}
+                </span>
               </div>
               <h2 className="text-lg font-bold text-white">
-                Camera Motion Prompts (Batch Meta AI Automation)
+                {productionMode === 'classic_2d' 
+                  ? 'Panel Display & Transisi 2D Ken Burns (Mode B: Fast Production)' 
+                  : 'Camera Motion Prompts (Batch Meta AI Automation)'}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Instruksi pergerakan kamera sinematik 3D (crash zoom, pan tracking, aura burst, drifting particles) untuk ekstensi Meta AI.
+                {productionMode === 'classic_2d'
+                  ? 'Pada Mode B (Classic 2D), Anda tidak perlu menggunakan Meta AI! Gambar statis akan otomatis dianimasikan dengan zoom/pan lembut dan transisi komik digital saat perakitan di Step 5.'
+                  : 'Instruksi pergerakan kamera sinematik 3D (crash zoom, pan tracking, aura burst, drifting particles) untuk ekstensi Meta AI.'}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => copyToClipboard(getMetaMotionBatch(), 'meta_batch')}
-                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-sky-600/20 transition cursor-pointer"
-              >
-                {copiedType === 'meta_batch' ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Semua Motion Tersalin!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy All for Meta Automation</span>
-                  </>
-                )}
-              </button>
+            {productionMode === 'full_motion' && (
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(getMetaMotionBatch(), 'meta_batch')}
+                  className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-sky-600/20 transition cursor-pointer"
+                >
+                  {copiedType === 'meta_batch' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Semua Motion Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy All for Meta Automation</span>
+                    </>
+                  )}
+                </button>
 
-              <button
-                type="button"
-                onClick={() => downloadTextFile(getMetaMotionBatch(), `meta_motion_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download .txt</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => downloadTextFile(getMetaMotionBatch(), `meta_motion_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
+                  className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download .txt</span>
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Mode B Notice Banner */}
+          {productionMode === 'classic_2d' && (
+            <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start space-x-3 text-xs text-emerald-200">
+              <Zap className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold text-white">Mode B (Zero-Motion) Aktif:</span>
+                <p className="text-emerald-300/80 text-[11px] leading-relaxed">
+                  Anda dapat melewati tahap pembuatan video di Meta AI. Cukup pastikan kumpulan gambar panel hasil unduhan Google Flow siap diunggah di Step 5. Efek Ken Burns dan pergeseran fokus akan disinkronkan tepat dengan durasi vokal Edge-TTS secara otomatis!
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(5)}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition"
+                  >
+                    <span>Langsung Lanjut ke Step 5: Final Assembly</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* List Motion Prompts per Scene */}
           <div className="space-y-3.5">
@@ -1201,27 +1517,31 @@ export default function StudioPage() {
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(motionPrompt, `motion_${scene.scene_order}`)}
-                        className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition"
-                      >
-                        {copiedType === `motion_${scene.scene_order}` ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-400" />
-                            <span>Tersalin!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            <span>Copy Motion</span>
-                          </>
-                        )}
-                      </button>
+                      {productionMode === 'full_motion' && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(motionPrompt, `motion_${scene.scene_order}`)}
+                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition"
+                        >
+                          {copiedType === `motion_${scene.scene_order}` ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-400" />
+                              <span>Tersalin!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Motion</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-xs font-mono text-sky-200/90 leading-relaxed select-all">
-                      {motionPrompt}
+                      {productionMode === 'classic_2d' 
+                        ? `2D Pan/Zoom: ${scene.camera_motion || 'zoom_in'} (Digital comic Ken Burns transition)` 
+                        : motionPrompt}
                     </div>
                   </div>
                 );
@@ -1364,11 +1684,11 @@ export default function StudioPage() {
           <div className="flex items-center justify-between pt-4 border-t border-slate-800">
             <button
               type="button"
-              onClick={() => setCurrentStep(3)}
+              onClick={() => setCurrentStep(productionMode === 'classic_2d' ? 2 : 3)}
               className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Kembali ke Step 3</span>
+              <span>Kembali</span>
             </button>
 
             <button
@@ -1392,13 +1712,19 @@ export default function StudioPage() {
           <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-semibold text-emerald-400 mb-1.5">
-                <span>STEP 5 • FINAL ASSEMBLY &amp; COMPILATION</span>
+                <span>
+                  {productionMode === 'classic_2d' ? 'STEP 5 • 2D MANHWA PANEL STITCHING' : 'STEP 5 • FULL-MOTION COMPILATION'}
+                </span>
               </div>
               <h2 className="text-lg font-bold text-white">
-                Perakitan Final Episode (Audio, Kara Subtitles &amp; Video Concat)
+                {productionMode === 'classic_2d' 
+                  ? 'Perakitan Episode 2D Manhwa (Panel Statis + Ken Burns + Karaoke Subtitle)' 
+                  : 'Perakitan Final Episode (Video Concat + SFX + BGM)'}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Drop kumpulan video klip MP4 dari Meta AI, lalu klik &quot;Assemble Final Episode&quot; untuk mengeksekusi vokal Edge-TTS, subtitle karaoke dinamis, SFX, dan BGM.
+                {productionMode === 'classic_2d'
+                  ? 'Drop kumpulan GAMBAR panel (.png / .jpg) hasil download Google Flow. Sistem akan menggabungkan panel statis dengan transisi Ken Burns, vokal Edge-TTS, subtitle .ass, SFX whoosh & BGM.'
+                  : 'Drop kumpulan video klip MP4 dari Meta AI, lalu klik "Assemble Final Episode" untuk mengeksekusi vokal, subtitle karaoke, SFX, dan BGM.'}
               </p>
             </div>
 
@@ -1412,49 +1738,44 @@ export default function StudioPage() {
             </button>
           </div>
 
-          {/* Pengamanan Anti-Perakitan Liar Callout */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-start space-x-3 text-xs text-slate-300">
-            <ShieldCheck className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <span className="font-bold text-white">Perlindungan Perakitan Terkontrol:</span>
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Perakitan otomatis liar saat sistem baru dibuka telah dinonaktifkan. Seluruh eksekusi vokal Edge-TTS, subtitle karaoke dinamis (.ass), transisi SFX, dan stitching FFmpeg hanya akan dimulai setelah Anda menekan tombol utama <strong className="text-emerald-300">&quot;Assemble Final Episode&quot;</strong> di bawah.
-              </p>
-            </div>
-          </div>
-
-          {/* Area Dropzone Video MP4 dari Meta AI */}
+          {/* Area Dropzone Media (Gambar untuk Mode B, Video untuk Mode A) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
               <div
-                onClick={() => videoClipsInputRef.current?.click()}
+                onClick={() => mediaFileInputRef.current?.click()}
                 className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 bg-slate-900/50 hover:bg-slate-900 flex flex-col items-center justify-center text-center cursor-pointer transition group"
               >
                 <input
                   type="file"
-                  ref={videoClipsInputRef}
-                  onChange={handleVideoClipsUpload}
+                  ref={mediaFileInputRef}
+                  onChange={handleMediaUpload}
                   multiple
-                  accept="video/mp4,video/webm,video/mov"
+                  accept={productionMode === 'classic_2d' ? 'image/png,image/jpeg,image/webp' : 'video/mp4,video/webm,video/mov'}
                   className="hidden"
                 />
 
                 {isUploadingClips ? (
                   <div className="py-6 flex flex-col items-center space-y-2">
                     <RefreshCw className="w-8 h-8 animate-spin text-emerald-400" />
-                    <span className="text-xs text-slate-300">Mengunggah &amp; mengidentifikasi klip video...</span>
+                    <span className="text-xs text-slate-300">
+                      {productionMode === 'classic_2d' ? 'Mengunggah & mengidentifikasi panel gambar...' : 'Mengunggah & mengidentifikasi klip video...'}
+                    </span>
                   </div>
                 ) : (
                   <div className="py-6 space-y-2.5">
                     <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto group-hover:scale-105 transition">
-                      <Video className="w-6 h-6 text-emerald-400" />
+                      {productionMode === 'classic_2d' ? <ImageIcon className="w-6 h-6 text-emerald-400" /> : <Video className="w-6 h-6 text-emerald-400" />}
                     </div>
                     <div>
                       <div className="text-xs font-bold text-white">
-                        Drop Kumpulan Video MP4 Meta AI di Sini
+                        {productionMode === 'classic_2d'
+                          ? 'Drop Kumpulan Gambar Panel Manhwa (.PNG / .JPG) dari Google Flow'
+                          : 'Drop Kumpulan Video MP4 Meta AI di Sini'}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5 max-w-sm">
-                        Pilih sekaligus semua file unduhan dari Meta AI (scene 1 s/d {totalRequiredScenes}). Atau simpan langsung di folder lokal:
+                        {productionMode === 'classic_2d'
+                          ? `Pilih sekaligus semua file gambar panel hasil unduhan Google Flow (scene 1 s/d ${totalRequiredScenes}).`
+                          : `Pilih sekaligus semua file video unduhan dari Meta AI (scene 1 s/d ${totalRequiredScenes}).`}
                       </p>
                       <code className="mt-2 inline-block px-2.5 py-1 rounded bg-slate-950 font-mono text-[10px] text-emerald-300 border border-slate-800">
                         storage/raw_downloads/{activeProject?.id || 'project_id'}/
@@ -1467,9 +1788,11 @@ export default function StudioPage() {
               {/* Status Readiness Scene Clips */}
               <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold">
-                  <span className="text-white">Status Verifikasi Klip Scene:</span>
+                  <span className="text-white">
+                    {productionMode === 'classic_2d' ? 'Status Kesiapan Panel Gambar:' : 'Status Verifikasi Klip Video:'}
+                  </span>
                   <span className="text-emerald-400">
-                    {verifiedClipsCount}/{totalRequiredScenes} Klip Terdeteksi
+                    {verifiedClipsCount}/{totalRequiredScenes} {productionMode === 'classic_2d' ? 'Panel Terdeteksi' : 'Klip Terdeteksi'}
                   </span>
                 </div>
 
@@ -1503,9 +1826,13 @@ export default function StudioPage() {
             <div className="space-y-4">
               <div className="p-5 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-900 border border-indigo-500/30 space-y-4 shadow-xl">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Eksekusi Final Studio</h3>
+                  <h3 className="text-sm font-bold text-white">
+                    {productionMode === 'classic_2d' ? 'Eksekusi Perakitan 2D Manhwa' : 'Eksekusi Final Studio'}
+                  </h3>
                   <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    Sistem akan menyatukan suara Edge-TTS, membakar subtitle karaoke dinamis (.ass), menambahkan efek suara transisi (whoosh, slash, impact), dan mixing BGM 3-fase.
+                    {productionMode === 'classic_2d'
+                      ? 'Menggabungkan panel gambar statis dengan pergerakan kamera Ken Burns lembut, narasi vokal Edge-TTS, subtitle karaoke dinamis (.ass), SFX whoosh transisi komik, dan BGM sinematik.'
+                      : 'Menyatukan video klip Meta AI, suara Edge-TTS, subtitle karaoke dinamis (.ass), SFX transisi, dan mixing BGM 3-fase.'}
                   </p>
                 </div>
 
@@ -1523,7 +1850,9 @@ export default function StudioPage() {
                   ) : (
                     <>
                       <Clapperboard className="w-4 h-4 text-slate-950" />
-                      <span>Assemble Final Episode</span>
+                      <span>
+                        {productionMode === 'classic_2d' ? 'Assemble 2D Manhwa Episode' : 'Assemble Final Episode'}
+                      </span>
                     </>
                   )}
                 </button>
