@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, 
   Lock, 
+  Unlock,
   Play, 
   Film, 
   Volume2, 
@@ -20,12 +21,27 @@ import {
   Copy,
   Check,
   Download,
-  FileText
+  FileText,
+  Upload,
+  ArrowRight,
+  ArrowLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Sliders,
+  ShieldCheck,
+  Video
 } from 'lucide-react';
 import { ManhwaProject, ManhwaScene } from '@/lib/types';
 
 export default function StudioPage() {
-  // Form state
+  // Wizard Navigation: Step 1 to Step 5
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [showStorySetup, setShowStorySetup] = useState<boolean>(true);
+
+  // Global Story Setup State
+  const [projectTitle, setProjectTitle] = useState('Kebangkitan Sang Penguasa Bayangan');
   const [characterName, setCharacterName] = useState('Kang Min-Woo');
   const [characterLockPrompt, setCharacterLockPrompt] = useState(
     '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, athletic silhouette, black hooded long coat with glowing purple mana aura, high contrast manhwa art style, sharp lineart, 8k masterpiece'
@@ -35,29 +51,117 @@ export default function StudioPage() {
   const [storyIdea, setStoryIdea] = useState(
     'Setelah 10 tahun terjebak di dungeon peringkat terendah, sebuah jendela sistem misterius muncul di hadapannya. Peringkatnya melonjak dari E-rank menjadi Penguasa Bayangan, dan monster bos pertama tunduk di bawah kakinya.'
   );
-  const [sceneCount, setSceneCount] = useState(5);
-  
-  // App state
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [sceneCount, setSceneCount] = useState<number>(5);
+
+  // Character Master State (Step 1)
+  const [isCharacterLocked, setIsCharacterLocked] = useState<boolean>(true);
+  const [uploadedCharacterUrl, setUploadedCharacterUrl] = useState<string | null>(null);
+  const [isUploadingChar, setIsUploadingChar] = useState<boolean>(false);
+  const charFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Assembly & Video Drop State (Step 5)
+  const [uploadedClips, setUploadedClips] = useState<Record<number, string>>({});
+  const [isUploadingClips, setIsUploadingClips] = useState<boolean>(false);
+  const [isAssembling, setIsAssembling] = useState<boolean>(false);
+  const videoClipsInputRef = useRef<HTMLInputElement>(null);
+
+  // Projects & App State
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [projects, setProjects] = useState<ManhwaProject[]>([]);
   const [activeProject, setActiveProject] = useState<ManhwaProject | null>(null);
-  const [selectedScene, setSelectedScene] = useState<ManhwaScene | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-    const [regeneratingMap, setRegeneratingMap] = useState<Record<string, 'image' | 'voice' | 'all' | null>>({});
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [copiedType, setCopiedType] = useState<string | null>(null);
-  const [showBatchPreview, setShowBatchPreview] = useState<boolean>(false);
+  const [showRawDrawer, setShowRawDrawer] = useState<boolean>(false);
 
-  // Helper functions for Batch Web Automation Export (Google Flow & Meta AI)
-  const getAnchorCharacterPrompt = () => {
-    return `Master Character Reference Sheet:
-Character Name: ${characterName}
-Art Style Preset: ${stylePreset}
-Appearance Prompt: ${characterLockPrompt}
-Quality Tags: masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ultra-detailed face, expressive sharp eyes, clean lineart, high contrast rim lighting, dark atmospheric studio background, 8k resolution, highly consistent master character sheet.
-Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anatomy, flat shading, 3D CGI, western comic style`;
+  // Presets mapping
+  const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
+    'Solo Leveling / Dark Fantasy': {
+      prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, black long coat, dark purple shadow aura, solo leveling art style, dramatic rim lighting, 8k',
+      desc: 'Dark shadows, glowing blue/purple aura, intense sharp eyes',
+      defaultBgm: 'epic_battle'
+    },
+    'Omniscient Reader / Modern Hunter': {
+      prompt: '1man, solo, neat dark hair, determined obsidian eyes, white trench coat over formal dark suit, modern seoul apocalypse background, webtoon clean lineart, vibrant colors',
+      desc: 'White trenchcoat, modern apocalypse hunter, clean manhwa colors',
+      defaultBgm: 'epic_battle'
+    },
+    'Murim / Heavenly Demon Cultivation': {
+      prompt: '1man, solo, long flowing jet-black hair tied in topknot, crimson glowing eyes, ornate martial arts robes with silver dragon embroidery, floating martial aura, ancient pagoda ruins',
+      desc: 'Traditional martial robes, flowing hair, ancient murim aesthetic',
+      defaultBgm: 'mystery_dungeon'
+    },
+    'Magic Emperor / Demonic Sovereign': {
+      prompt: '1man, solo, silver styled hair, piercing amethyst purple eyes, dark imperial robes with golden cloud patterns, crackling dark purple lightning, arrogant smirk, high tension manhwa art',
+      desc: 'Silver hair, imperial cultivation robes, demonic lightning aura',
+      defaultBgm: 'epic_battle'
+    },
+    'Villainess / Imperial Noblesse': {
+      prompt: '1girl, solo, long wavy platinum blonde hair, piercing amethyst violet eyes, opulent emerald embroidered royal gown, gold jewelry, grand baroque palace ballroom, soft dramatic glow',
+      desc: 'Royal elegance, opulent palace background, lavish webtoon romance',
+      defaultBgm: 'melancholy_sad'
+    }
   };
 
+  const bgmOptions = [
+    { 
+      id: 'epic_battle', 
+      label: 'Epic Battle (Solo Leveling)', 
+      desc: 'Orchestral choir, heavy brass, aggressive percussion synth', 
+      icon: '⚔️',
+      aiMusicPrompt: 'Epic orchestral battle theme, heavy synth bass, intense choir chants, aggressive war drums, cinematic anime crescendo, 140 bpm'
+    },
+    { 
+      id: 'mystery_dungeon', 
+      label: 'Mystery Dungeon (Suspense)', 
+      desc: 'Dark ambient drones, dissonant strings, low sub-bass echoes', 
+      icon: '🔮',
+      aiMusicPrompt: 'Dark ambient dungeon exploration soundtrack, eerie cello drone, low sub bass, reverberant cave echoes, tense atmosphere, 90 bpm'
+    },
+    { 
+      id: 'melancholy_sad', 
+      label: 'Melancholy & Tragic', 
+      desc: 'Solo emotional piano, weeping cello, soft rain ambience', 
+      icon: '🥀',
+      aiMusicPrompt: 'Emotional sorrowful anime soundtrack, solo piano melody, gentle cello harmony, soft distant rain, heartfelt sadness, 75 bpm'
+    }
+  ];
+
+  // Helper functions for Step 1: Character Variations
+  const getCharacterVariations = () => {
+    return [
+      {
+        id: 'var_1',
+        title: 'Variasi 1: Masterpiece Key Visual (Front 3/4)',
+        badge: 'Rekomendasi Utama',
+        desc: 'Pose standar key visual webtoon dengan tatapan tajam dan pencahayaan kontras tinggi. Ideal sebagai referensi paten di AutoFlow.',
+        prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${characterName}, ${characterLockPrompt}, clean lineart, expressive sharp eyes, high contrast rim lighting, dark studio atmospheric background, 8k resolution, highly consistent master character sheet`,
+      },
+      {
+        id: 'var_2',
+        title: 'Variasi 2: Awakened State & Surging Mana Aura',
+        badge: 'Mode Tempur / Awakening',
+        desc: 'Karakter dikelilingi aura energi magis berkilau dengan efek partikel melayang untuk adegan aksi intensitas tinggi.',
+        prompt: `masterpiece, solo, combat battle stance, ${characterName}, ${characterLockPrompt}, surging glowing mana aura enveloping body, floating hair strands, crackling electricity embers, dark volumetric fog, dynamic manhwa angle, unreal engine 5 render, 8k`,
+      },
+      {
+        id: 'var_3',
+        title: 'Variasi 3: Extreme Close-Up & Piercing Gaze',
+        badge: 'Close-Up Dramatis',
+        desc: 'Fokus ketat pada ekspresi wajah, detail mata bersinar tajam, dan bayangan dramatis untuk momen puncak emosional.',
+        prompt: `masterpiece, extreme close-up on face, ${characterName}, ${characterLockPrompt}, razor sharp jawline, glowing piercing eyes with intricate iris details, dynamic wind blowing hair across forehead, dramatic shadow cast, high tension webtoon panel, ultra-detailed 8k`,
+      },
+      {
+        id: 'var_4',
+        title: 'Variasi 4: Silhouette & Shadow Wings / Sovereign',
+        badge: 'Pose Megah / Silhouette',
+        desc: 'Pose penuh dengan sayap bayangan atau jubah berkibar di atas reruntuhan batu, memberikan siluet megah sang penguasa.',
+        prompt: `masterpiece, dynamic full-body shot, ${characterName}, ${characterLockPrompt}, standing on shattered dungeon stone, gigantic shadow wings unfurling behind back, dark vortex sky, particles drifting upward, epic manhwa cover art, 8k wallpaper`,
+      },
+    ];
+  };
+
+  // Helper functions for Step 2 & 3: Batch Exports
   const getAutoflowVisualBatch = () => {
     if (!activeProject?.scenes || activeProject.scenes.length === 0) return '';
     const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
@@ -71,7 +175,7 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
     const motion = scene.camera_motion || 'zoom_in';
     const visual = (scene.visual_prompt || '').toLowerCase();
     
-    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('dagger') || visual.includes('axe')) {
+    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('dagger') || visual.includes('blade')) {
       return 'Dynamic explosive camera push forward, violent surging mana aura, lightning and sparks flying outward, intense anime action choreography, 3D parallax depth, high quality animation';
     }
     if (motion === 'zoom_in') {
@@ -111,6 +215,18 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
     }
   };
 
+  const downloadTextFile = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPackage = () => {
     if (!activeProject) return;
     const data = {
@@ -125,7 +241,7 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
       character: {
         name: characterName,
         appearance_locked_prompt: characterLockPrompt,
-        reference_image_url: activeProject.characters?.[0]?.reference_image_url || null,
+        reference_image_url: uploadedCharacterUrl || activeProject.characters?.[0]?.reference_image_url || null,
       },
       scenes: (activeProject.scenes || []).map((s) => ({
         scene_order: s.scene_order,
@@ -149,36 +265,6 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
-
-  // Presets mapping
-  const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
-    'Solo Leveling / Dark Fantasy': {
-      prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, black long coat, dark purple shadow aura, solo leveling art style, dramatic rim lighting, 8k',
-      desc: 'Dark shadows, glowing blue/purple aura, intense sharp eyes',
-      defaultBgm: 'epic_battle'
-    },
-    'Omniscient Reader / Modern Hunter': {
-      prompt: '1man, solo, neat dark hair, determined obsidian eyes, white trench coat over formal dark suit, modern seoul apocalypse background, webtoon clean lineart, vibrant colors',
-      desc: 'White trenchcoat, modern apocalypse hunter, clean manhwa colors',
-      defaultBgm: 'epic_battle'
-    },
-    'Murim / Heavenly Demon Cultivation': {
-      prompt: '1man, solo, long flowing jet-black hair tied in topknot, crimson glowing eyes, ornate martial arts robes with silver dragon embroidery, floating martial aura, ancient pagoda ruins',
-      desc: 'Traditional martial robes, flowing hair, ancient murim aesthetic',
-      defaultBgm: 'mystery_dungeon'
-    },
-    'Villainess / Imperial Noblesse': {
-      prompt: '1girl, solo, long wavy platinum blonde hair, piercing amethyst violet eyes, opulent emerald embroidered royal gown, gold jewelry, grand baroque palace ballroom, soft dramatic glow',
-      desc: 'Royal elegance, opulent palace background, lavish webtoon romance',
-      defaultBgm: 'melancholy_sad'
-    }
-  };
-
-  const bgmOptions = [
-    { id: 'epic_battle', label: 'Epic Battle', desc: 'Rhythmic action synth (Solo Leveling)', icon: '⚔️' },
-    { id: 'mystery_dungeon', label: 'Mystery Dungeon', desc: 'Dark ambient suspense & drones', icon: '🔮' },
-    { id: 'melancholy_sad', label: 'Melancholy Sad', desc: 'Emotional slow minor progression', icon: '🥀' }
-  ];
 
   // Fetch projects list
   const fetchProjects = async () => {
@@ -206,8 +292,16 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
       if (res.ok) {
         const data = await res.json();
         setActiveProject(data.project);
-        if (data.project.scenes && data.project.scenes.length > 0) {
-          setSelectedScene(data.project.scenes[0]);
+        if (data.project.title) setProjectTitle(data.project.title);
+        if (data.project.synopsis) setStoryIdea(data.project.synopsis);
+        if (data.project.characters && data.project.characters.length > 0) {
+          const char = data.project.characters[0];
+          if (char.name) setCharacterName(char.name);
+          if (char.appearance_locked_prompt) setCharacterLockPrompt(char.appearance_locked_prompt);
+          if (char.reference_image_url) setUploadedCharacterUrl(char.reference_image_url);
+        }
+        if (data.project.scenes) {
+          setSceneCount(data.project.scenes.length);
         }
       }
     } catch (e: any) {
@@ -219,13 +313,10 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
     fetchProjects();
   }, []);
 
-  // Live polling when active project has scenes in progress
+  // Polling project updates when stitching
   useEffect(() => {
     if (!activeProject?.id) return;
-    const hasUnfinished = (activeProject.scenes || []).some(
-      (s: any) => s.status !== 'ready' && s.status !== 'failed'
-    );
-    if (!hasUnfinished && activeProject.video_url) return;
+    if (activeProject.status !== 'stitching' && activeProject.video_job?.status !== 'pending_assembly') return;
 
     const interval = setInterval(async () => {
       try {
@@ -233,16 +324,19 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
         if (res.ok) {
           const data = await res.json();
           if (data.project) {
-            setActiveProject((prev: any) => (prev?.id === data.project.id ? data.project : prev));
+            setActiveProject(data.project);
+            if (data.project.status === 'completed' || data.project.video_url) {
+              setIsAssembling(false);
+            }
           }
         }
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 3500);
+    }, 4000);
 
     return () => clearInterval(interval);
-  }, [activeProject?.id, activeProject?.scenes, activeProject?.video_url]);
+  }, [activeProject?.id, activeProject?.status, activeProject?.video_job?.status]);
 
   const handlePresetChange = (presetName: string) => {
     setStylePreset(presetName);
@@ -252,7 +346,7 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
     }
   };
 
-  // Generate Story & Lock Characters
+  // Generate Story & Production Steps (Blueprint via LLM)
   const handleGenerateStory = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsGenerating(true);
@@ -263,6 +357,7 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          title: projectTitle,
           storyIdea,
           genre: `${stylePreset} (BGM: ${bgmPreset})`,
           characterName,
@@ -274,799 +369,1229 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to generate storyboard');
+        throw new Error(data.error || 'Gagal menghasilkan blueprint cerita');
       }
 
       if (data.project) {
         setActiveProject(data.project);
-        if (data.project.scenes?.length > 0) {
-          setSelectedScene(data.project.scenes[0]);
-        }
-        await fetchProjects();
+        setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
+        setShowStorySetup(false);
+        setCurrentStep(1); // Jump into Step 1 of Wizard
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error occurred during generation');
+      setErrorMsg(err.message || 'Terjadi kesalahan saat memproses cerita');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // Per-Scene Actions: Regenerate Image
-  const handleRegenerateImage = async (sceneId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  // Upload Master Character Image (Step 1)
+  const handleCharacterImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Instant local preview
+    const localUrl = URL.createObjectURL(file);
+    setUploadedCharacterUrl(localUrl);
+    setIsUploadingChar(true);
+
     try {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'image' }));
-      // Optimistic local state update
-      setActiveProject(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', image_url: undefined } : s)
-        };
+      const formData = new FormData();
+      formData.append('file', file);
+      const projectId = activeProject?.id || 'master_char';
+      formData.append('path', `characters/${projectId}_${Date.now()}.png`);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
       });
 
-      const res = await fetch(`/api/scenes/${sceneId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending', image_url: null })
-      });
-      if (!res.ok) throw new Error('Gagal merender ulang panel');
-    } catch (err: any) {
-      setErrorMsg(err.message);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.url) {
+          setUploadedCharacterUrl(json.url);
+        }
+      }
+    } catch (err) {
+      console.warn('Direct upload error, maintaining local preview:', err);
     } finally {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
+      setIsUploadingChar(false);
     }
   };
 
-  // Per-Scene Actions: Regenerate Voice
-  const handleRegenerateVoice = async (sceneId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  // Handle Multi-file Video Drop (Step 5)
+  const handleVideoClipsUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingClips(true);
+    const newMap = { ...uploadedClips };
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const matchNum = file.name.match(/\d+/);
+      const sceneIndex = matchNum ? parseInt(matchNum[0], 10) : i + 1;
+      
+      const localUrl = URL.createObjectURL(file);
+      newMap[sceneIndex] = file.name;
+
+      // Also try uploading to Supabase
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const projectId = activeProject?.id || 'temp';
+        formData.append('path', `project_clips/${projectId}/scene_${sceneIndex.toString().padStart(3, '0')}.mp4`);
+        await fetch('/api/upload', { method: 'POST', body: formData });
+      } catch (err) {
+        console.warn('Clip upload warning:', err);
+      }
+    }
+
+    setUploadedClips(newMap);
+    setIsUploadingClips(false);
+  };
+
+  // Trigger Final Assembly (Step 5)
+  const handleTriggerAssemble = async () => {
+    if (!activeProject) return;
+    setIsAssembling(true);
+    setErrorMsg(null);
+
     try {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'voice' }));
-      // Optimistic local state update
-      setActiveProject(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', audio_url: undefined } : s)
-        };
-      });
-
-      const res = await fetch(`/api/scenes/${sceneId}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/assemble', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending', audio_url: null })
+        body: JSON.stringify({
+          project_id: activeProject.id,
+          bgm_preset: bgmPreset,
+        }),
       });
-      if (!res.ok) throw new Error('Gagal membuat suara ulang');
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memulai perakitan');
+
+      // Refresh project state
+      await loadProjectDetail(activeProject.id);
     } catch (err: any) {
-      setErrorMsg(err.message);
-    } finally {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
+      setErrorMsg(err.message || 'Gagal memulai assembly');
+      setIsAssembling(false);
     }
   };
 
-  // Per-Scene Actions: Regenerate All (Image + Voice + Motion)
-  const handleRegenerateAll = async (sceneId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    try {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'all' }));
-      setActiveProject(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', image_url: undefined, audio_url: undefined } : s)
-        };
-      });
-
-      const res = await fetch(`/api/scenes/${sceneId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'pending', image_url: null, audio_url: null })
-      });
-      if (!res.ok) throw new Error('Gagal me-render ulang adegan penuh');
-    } catch (err: any) {
-      setErrorMsg(err.message);
-    } finally {
-      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
-    }
-  };
-
-  // Status Badge Renderer
-  const renderSceneStatusBadge = (status: string) => {
-    switch (status) {
-      case 'generating_audio':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-950/80 border border-sky-600/60 text-sky-300 flex items-center space-x-1.5 shadow-sm shadow-sky-500/20">
-            <Volume2 className="w-3 h-3 animate-pulse text-sky-400" />
-            <span>Voice Synth...</span>
-          </span>
-        );
-      case 'generating_image':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-purple-950/80 border border-purple-600/60 text-purple-300 flex items-center space-x-1.5 shadow-sm shadow-purple-500/20">
-            <ImageIcon className="w-3 h-3 animate-spin text-purple-400" />
-            <span>Rendering Panel...</span>
-          </span>
-        );
-      case 'animating':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-cyan-950/80 border border-cyan-600/60 text-cyan-300 flex items-center space-x-1.5 shadow-sm shadow-cyan-500/20">
-            <Film className="w-3 h-3 animate-bounce text-cyan-400" />
-            <span>Animating Motion...</span>
-          </span>
-        );
-      case 'compositing':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-indigo-950/80 border border-indigo-600/60 text-indigo-300 flex items-center space-x-1.5 shadow-sm shadow-indigo-500/20">
-            <Sparkles className="w-3 h-3 animate-spin text-indigo-400" />
-            <span>Burning Subtitles...</span>
-          </span>
-        );
-      case 'ready':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-950/80 border border-emerald-600/60 text-emerald-300 flex items-center space-x-1.5 shadow-sm shadow-emerald-500/20">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-            <span>Ready</span>
-          </span>
-        );
-      case 'failed':
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-rose-950/80 border border-rose-600/60 text-rose-300 flex items-center space-x-1.5 shadow-sm shadow-rose-500/20">
-            <AlertCircle className="w-3 h-3 text-rose-400" />
-            <span>Failed</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/80 border border-amber-600/60 text-amber-300 flex items-center space-x-1.5 shadow-sm shadow-amber-500/20">
-            <Clock className="w-3 h-3 animate-pulse text-amber-400" />
-            <span>Pending Queue</span>
-          </span>
-        );
-    }
-  };
-
-  const isStitching = activeProject?.video_job?.status === 'stitching' || 
-    (activeProject?.scenes && activeProject.scenes.length > 0 && 
-     activeProject.scenes.every(s => s.status === 'ready') && !activeProject.video_url);
+  // Calculate readiness of clips in Step 5
+  const totalRequiredScenes = activeProject?.scenes?.length || sceneCount;
+  const verifiedClipsCount = Object.keys(uploadedClips).length;
+  const isVideoJobActive = activeProject?.status === 'stitching' || activeProject?.video_job?.status === 'pending_assembly' || isAssembling;
+  const isVideoJobComplete = activeProject?.status === 'completed' || !!activeProject?.video_url;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-16">
       {/* Top Banner / Hero */}
       <div className="relative rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 p-6 shadow-2xl overflow-hidden">
         <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-semibold mb-3">
-              <Lock className="w-3.5 h-3.5" />
-              <span>Character Consistency & Dynamic Subtitle Engine Active</span>
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium mb-3">
+              <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-300" />
+              <span>Guided Production Wizard • YouTube Recap Workflow</span>
             </div>
-            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              AI Manhwa & Anime Recap Studio
-            </h2>
-            <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-              Produksi video recap manhwa vertikal (9:16) otomatis dengan subtitle karaoke .ass, high-motion image-to-video, dan transisi SFX sinematik.
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+              <span>AI Manhwa &amp; Anime Recap Studio</span>
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-400 max-w-2xl">
+              Alur kerja terstruktur dari ide cerita, loop karakter AutoFlow, batch prompt Meta AI, hingga perakitan video vertikal 1080x1920 siap tayang.
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 w-full md:w-auto">
             <button
-              onClick={fetchProjects}
-              className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-200 text-xs font-medium transition"
+              onClick={() => setShowStorySetup(!showStorySetup)}
+              className="flex-1 md:flex-initial inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition shadow-sm"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-              <span>Sync Cloud</span>
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{showStorySetup ? 'Tutup Setup Cerita' : 'Buka Setup Cerita'}</span>
+              {showStorySetup ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
+
+            {activeProject && (
+              <button
+                onClick={handleDownloadPackage}
+                className="flex-1 md:flex-initial inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Paket (.json)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Global Error Banner */}
       {errorMsg && (
-        <div className="p-4 rounded-xl bg-red-950/50 border border-red-800/80 text-red-200 text-xs flex items-center space-x-3">
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <span>{errorMsg}</span>
+        <div className="p-4 rounded-xl bg-rose-950/50 border border-rose-800 text-rose-200 text-xs flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center space-x-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <button onClick={() => setErrorMsg(null)} className="text-rose-400 hover:text-white text-sm font-bold ml-4">
+            ✕
+          </button>
         </div>
       )}
 
-      {/* Main Studio Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Form Controls (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="rounded-2xl bg-[#0f131d] border border-slate-800/80 p-6 shadow-xl">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2 mb-4">
-              <Lock className="w-4 h-4 text-indigo-400" />
-              <span>1. Character Appearance Lock</span>
-            </h3>
-
-            <form onSubmit={handleGenerateStory} className="space-y-4">
-              {/* Preset Selector */}
+      {/* 1. Form Input Cerita Utama (Global Setup) */}
+      {showStorySetup && (
+        <div className="rounded-2xl bg-slate-900/90 border border-indigo-500/20 p-6 shadow-xl backdrop-blur-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center space-x-2.5">
+              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-mono text-xs font-bold border border-indigo-500/30">
+                0
+              </span>
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                  Manhwa Style Preset
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.keys(stylePresets).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => handlePresetChange(preset)}
-                      className={`px-3 py-2 rounded-lg text-left text-xs font-medium border transition ${
-                        stylePreset === preset
-                          ? 'bg-indigo-600/20 border-indigo-500 text-indigo-200'
-                          : 'bg-slate-800/40 border-slate-700/60 text-slate-400 hover:bg-slate-800'
-                      }`}
-                    >
-                      <div className="font-semibold">{preset.split('/')[0]}</div>
-                      <div className="text-[10px] text-slate-500 truncate">{preset.split('/')[1] || ''}</div>
-                    </button>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Global Setup: Form Input Cerita &amp; Blueprint Sutradara
+                </h2>
+                <p className="text-[11px] text-slate-400">
+                  Masukkan sinopsis atau hasil brainstorming Gemini untuk menghasilkan seluruh adegan cerita dan prompt sinematik.
+                </p>
+              </div>
+            </div>
+
+            {/* Project Switcher */}
+            {projects.length > 0 && (
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] text-slate-400">Proyek:</span>
+                <select
+                  value={activeProject?.id || ''}
+                  onChange={(e) => loadProjectDetail(e.target.value)}
+                  className="bg-slate-950 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title.slice(0, 32)}... ({p.scenes?.length || 0} Scene)
+                    </option>
                   ))}
-                </div>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleGenerateStory} className="space-y-5">
+            {/* Judul Proyek & Nama Karakter */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Judul Proyek / Episode
+                </label>
+                <input
+                  type="text"
+                  value={projectTitle}
+                  onChange={(e) => setProjectTitle(e.target.value)}
+                  placeholder="Contoh: Kebangkitan Belati Bayangan: Dendam Kaelen"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                />
               </div>
 
-              {/* Character Name */}
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                  Character Name (Nama Karakter)
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Nama Karakter Utama (Protagonis)
                 </label>
                 <input
                   type="text"
                   value={characterName}
                   onChange={(e) => setCharacterName(e.target.value)}
-                  placeholder="e.g. Sung Jin-Woo / Kang Min-Woo"
-                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                  required
+                  placeholder="Contoh: Kaelen, Kang Min-Woo, Jin-Woo"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
                 />
               </div>
+            </div>
 
-              {/* Locked Prompt */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-slate-400">
-                    Locked Visual Prompt (Ciri Fisik Terkunci)
-                  </label>
-                  <span className="text-[10px] text-indigo-400 font-mono">Ditanam di tiap scene</span>
-                </div>
-                <textarea
-                  rows={4}
-                  value={characterLockPrompt}
-                  onChange={(e) => setCharacterLockPrompt(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono leading-relaxed"
-                  required
-                />
-              </div>
+            {/* Ide Cerita / Sinopsis Besar */}
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Ide Cerita / Sinopsis / Hasil Brainstorming Gemini
+              </label>
+              <textarea
+                rows={4}
+                value={storyIdea}
+                onChange={(e) => setStoryIdea(e.target.value)}
+                placeholder="Tuliskan atau paste alur cerita lengkap, momen plot twist, musuh utama, dan tensi adegan di sini..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
+              />
+            </div>
 
-              {/* BGM Soundtrack Preset */}
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 flex items-center space-x-1.5">
-                  <Music className="w-3.5 h-3.5 text-violet-400" />
-                  <span>Cinematic BGM Soundtrack</span>
+            {/* Preset Gaya Manhwa & Target Jumlah Scene */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Preset Gaya Manhwa
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {bgmOptions.map((opt) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(stylePresets).map(([key, val]) => (
                     <button
-                      key={opt.id}
+                      key={key}
                       type="button"
-                      onClick={() => setBgmPreset(opt.id as any)}
-                      className={`p-2 rounded-lg text-left text-xs border transition ${
-                        bgmPreset === opt.id
-                          ? 'bg-violet-600/20 border-violet-500 text-violet-200'
-                          : 'bg-slate-800/40 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                      onClick={() => handlePresetChange(key)}
+                      className={`text-left p-2.5 rounded-xl border text-xs transition ${
+                        stylePreset === key
+                          ? 'bg-indigo-950/60 border-indigo-500/80 text-indigo-200'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      <div className="font-bold flex items-center space-x-1">
-                        <span>{opt.icon}</span>
-                        <span className="truncate">{opt.label}</span>
-                      </div>
-                      <div className="text-[9px] text-slate-500 mt-0.5 truncate">{opt.desc}</div>
+                      <div className="font-semibold text-white">{key}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{val.desc}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="border-t border-slate-800/80 pt-4 mt-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2 mb-3">
-                  <Clapperboard className="w-4 h-4 text-violet-400" />
-                  <span>2. Story Outline & Script</span>
-                </h3>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                    Ide Alur / Sinopsis Cerita
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={storyIdea}
-                    onChange={(e) => setStoryIdea(e.target.value)}
-                    placeholder="Tulis ringkasan cerita atau beat chapter di sini..."
-                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed"
-                    required
-                  />
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Target Jumlah Scene
+                </label>
+                <div className="space-y-2">
+                  <select
+                    value={sceneCount}
+                    onChange={(e) => setSceneCount(parseInt(e.target.value, 10))}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={3}>3 Scenes (Short Teaser)</option>
+                    <option value={5}>5 Scenes (Quick TikTok Recap)</option>
+                    <option value={10}>10 Scenes (Standard Episode)</option>
+                    <option value={20}>20 Scenes (Longform Story)</option>
+                    <option value={30}>30 Scenes (Full Chapter Recap)</option>
+                    <option value={60}>60 Scenes (Epic Long Movie Recap)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    Sistem akan membagi alur cerita menjadi {sceneCount} adegan kronologis siap visualisasi.
+                  </p>
                 </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <label className="text-xs font-medium text-slate-400">
-                    Target Scene / Panel Count
-                  </label>
-                  <div className="flex items-center space-x-1.5">
-                    {[3, 5, 8, 10].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setSceneCount(num)}
-                        className={`w-8 h-8 rounded-lg text-xs font-mono font-bold transition border ${
-                          sceneCount === num
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30'
-                            : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        {num}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isGenerating}
-                  className="w-full mt-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/25 border border-indigo-400/30 flex items-center justify-center space-x-2 transition disabled:opacity-50"
-                >
-                  {isGenerating ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Merajut Storyboard & Mengunci Karakter...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Buat Storyboard & Lock Karakter</span>
-                    </>
-                  )}
-                </button>
               </div>
-            </form>
+            </div>
+
+            {/* Tombol Eksekusi Blueprint */}
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={isGenerating || !storyIdea.trim()}
+                className="inline-flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-xl shadow-indigo-600/30 transition disabled:opacity-50 cursor-pointer"
+              >
+                {isGenerating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Merancang Storyboard &amp; Prompt Sinematik...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Generate Story &amp; Production Steps</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* 2. Wizard Stepper Navigation Header */}
+      <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-3 shadow-lg">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            { step: 1, title: 'Karakter Master', subtitle: 'AutoFlow Loop', icon: Lock },
+            { step: 2, title: 'Visual Prompts', subtitle: 'Batch AutoFlow', icon: ImageIcon },
+            { step: 3, title: 'Motion Prompts', subtitle: 'Batch Meta AI', icon: Film },
+            { step: 4, title: 'BGM & Narasi', subtitle: 'Edge-TTS Sound', icon: Music },
+            { step: 5, title: 'Final Assembly', subtitle: 'Stitch & Output', icon: Clapperboard },
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = currentStep === item.step;
+            const isDone = currentStep > item.step;
+
+            return (
+              <button
+                key={item.step}
+                type="button"
+                onClick={() => setCurrentStep(item.step)}
+                className={`relative flex items-center space-x-2.5 p-3 rounded-xl border text-left transition ${
+                  isActive
+                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-500/10'
+                    : isDone
+                    ? 'bg-slate-950/60 border-slate-800 text-emerald-400 hover:border-slate-700'
+                    : 'bg-slate-950/30 border-slate-800/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-bold flex-shrink-0 ${
+                    isActive
+                      ? 'bg-indigo-500 text-white shadow-sm'
+                      : isDone
+                      ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-400'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {isDone ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : item.step}
+                </div>
+                <div className="overflow-hidden">
+                  <div className="text-xs font-bold truncate text-slate-100">{item.title}</div>
+                  <div className="text-[10px] text-slate-400 truncate">{item.subtitle}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* STEP 1: Pembuatan & Penguncian Karakter Master (AutoFlow Character Loop) */}
+      {/* ========================================================================= */}
+      {currentStep === 1 && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Step Header */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[11px] font-semibold text-indigo-400 mb-1.5">
+                <span>STEP 1 • AUTOFLOW CHARACTER LOOP</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                Pembuatan &amp; Penguncian Karakter Master (Character Anchor)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Pilih variasi prompt di bawah, paste ke Google Flow / AutoFlow untuk generate contoh gambar. Download 1 gambar terbaik, upload ke sini, lalu kunci karakternya.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => setIsCharacterLocked(!isCharacterLocked)}
+                className={`inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+                  isCharacterLocked
+                    ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-emerald-500/10'
+                    : 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-amber-500/10'
+                }`}
+              >
+                {isCharacterLocked ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Karakter Terkunci (LOCKED)</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Klik Untuk Mengunci</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => copyToClipboard(characterLockPrompt, 'locked_char')}
+                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/40 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition"
+              >
+                {copiedType === 'locked_char' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-300" />
+                    <span>Tersalin ke Clipboard!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Locked Character Prompt</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Project History Switcher */}
-          {projects.length > 0 && (
-            <div className="rounded-2xl bg-[#0f131d] border border-slate-800/80 p-4">
-              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                Saved Projects ({projects.length})
-              </h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => loadProjectDetail(p.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition border flex items-center justify-between ${
-                      activeProject?.id === p.id
-                        ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-200'
-                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800/60'
-                    }`}
+          {/* Grid: 3-5 Variasi AI Character Prompts + Upload Dropzone */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Kolom Kiri: 4 Variasi Prompt Karakter Master */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                <span>3–5 Variasi Prompt Karakter Master (AutoFlow Engine)</span>
+                <span className="text-[11px] font-normal text-slate-500">Pilih salah satu variasi untuk di-generate di Google Flow</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3.5">
+                {getCharacterVariations().map((v) => (
+                  <div
+                    key={v.id}
+                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
                   >
-                    <div className="truncate pr-2">
-                      <div className="font-semibold text-white truncate">{p.title}</div>
-                      <div className="text-[10px] text-slate-500">{new Date(p.created_at).toLocaleDateString()}</div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-white">{v.title}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300 font-medium">
+                          {v.badge}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCharacterLockPrompt(v.prompt);
+                            setIsCharacterLocked(true);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-medium text-slate-300 transition"
+                        >
+                          Pilih Jadi Kunci
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(v.prompt, v.id)}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-[11px] font-semibold text-white transition"
+                        >
+                          {copiedType === v.id ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-300" />
+                              <span>Tersalin!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy Prompt</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                      {p.status}
-                    </span>
-                  </button>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">{v.desc}</p>
+
+                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-[11px] font-mono text-slate-300 leading-relaxed select-all">
+                      {v.prompt}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Right Column: Storyboard Panels & Director (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="rounded-2xl bg-[#0f131d] border border-slate-800/80 p-6 shadow-xl">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
-                  <Layers className="w-4 h-4 text-indigo-400" />
-                  <span>Storyboard Timeline</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {activeProject ? activeProject.title : 'Belum ada proyek terpilih'}
+            {/* Kolom Kanan: Upload / Dropzone Gambar Karakter Master */}
+            <div className="space-y-4">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Upload Selected Character Image
+              </div>
+
+              <div
+                onClick={() => charFileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 bg-slate-900/50 hover:bg-slate-900 flex flex-col items-center justify-center text-center cursor-pointer transition group"
+              >
+                <input
+                  type="file"
+                  ref={charFileInputRef}
+                  onChange={handleCharacterImageUpload}
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                />
+
+                {isUploadingChar ? (
+                  <div className="py-8 flex flex-col items-center space-y-2">
+                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-400" />
+                    <span className="text-xs text-slate-300">Mengunggah gambar master ke storage...</span>
+                  </div>
+                ) : uploadedCharacterUrl ? (
+                  <div className="space-y-3 w-full">
+                    <div className="relative aspect-[3/4] max-w-[220px] mx-auto rounded-xl overflow-hidden border-2 border-emerald-500/80 shadow-xl shadow-emerald-500/10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={uploadedCharacterUrl}
+                        alt="Master Character"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 border border-emerald-500 text-[10px] font-mono text-emerald-300">
+                        LOCKED
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-emerald-400 flex items-center justify-center space-x-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Karakter Master Terpasang</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Klik untuk ganti gambar lain</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-8 space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mx-auto group-hover:scale-105 transition">
+                      <Upload className="w-6 h-6 text-indigo-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">Drop Gambar Master di Sini</div>
+                      <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                        Masukkan 1 gambar terbaik hasil generate dari Google Flow / AutoFlow untuk referensi visual.
+                      </p>
+                    </div>
+                    <span className="inline-block px-3 py-1 rounded-lg bg-slate-800 text-[11px] font-medium text-slate-300">
+                      Pilih File (PNG / JPG / WEBP)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Status Box */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <div className="text-xs font-bold text-slate-200 flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Konsistensi Wajah Terjamin</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Setelah karakter dikunci, prompt paten ini akan disematkan secara otomatis ke seluruh adegan di Step 2.
                 </p>
               </div>
 
-              {activeProject && (
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs text-slate-400 font-mono">
-                    {activeProject.scenes?.length || 0} Panels
-                  </span>
-                </div>
-              )}
+              {/* Tombol Lanjut ke Step 2 */}
+              <button
+                type="button"
+                onClick={() => setCurrentStep(2)}
+                className="w-full inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+              >
+                <span>Lanjut ke Step 2: Scene Visual Prompts</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STEP 2: Scene Visual Prompts (Batch AutoFlow untuk Adegan Cerita) */}
+      {/* ========================================================================= */}
+      {currentStep === 2 && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Step Header */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-[11px] font-semibold text-purple-400 mb-1.5">
+                <span>STEP 2 • BATCH SCENE PROMPTS</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                Scene Visual Prompts (Batch AutoFlow untuk Adegan Cerita)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Seluruh adegan cerita ({activeProject?.scenes?.length || sceneCount} scene) lengkap dengan narasi bahasa Indonesia dan prompt visual siap paste massal ke AutoFlow.
+              </p>
             </div>
 
-            {/* Assembling Progress Banner */}
-            {isStitching && (
-              <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-violet-950/60 to-indigo-950/60 border border-violet-500/40 flex items-center space-x-3 text-violet-200">
-                <Sparkles className="w-5 h-5 text-violet-400 animate-spin flex-shrink-0" />
-                <div className="text-xs">
-                  <div className="font-bold">Assembling Full Episode...</div>
-                  <div className="text-violet-300/80 text-[11px] mt-0.5">
-                    Menjahit semua klip adegan, menyematkan subtitle karaoke (.ass), menyisipkan SFX whoosh & impact, dan mixing BGM sinematik.
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(getAutoflowVisualBatch(), 'autoflow_batch')}
+                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 transition cursor-pointer"
+              >
+                {copiedType === 'autoflow_batch' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Semua Scene Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy All for AutoFlow</span>
+                  </>
+                )}
+              </button>
 
-            {/* Final Episode Video Player */}
-            {activeProject?.video_url && (
-              <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-indigo-950/50 via-purple-950/30 to-slate-900 border border-indigo-500/40 shadow-2xl">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
-                      <Film className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white tracking-wide">
-                        Episode Final Cut Preview (1080x1920)
-                      </h4>
-                      <p className="text-[11px] text-slate-400">
-                        Full stitched vertical recap with dynamic .ass subtitles, SFX transitions, and BGM
-                      </p>
-                    </div>
-                  </div>
-                  <a
-                    href={activeProject.video_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    download
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition flex items-center space-x-1.5"
-                  >
-                    <span>Download MP4</span>
-                  </a>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-800 bg-black/80 flex justify-center">
-                  <video
-                    controls
-                    src={activeProject.video_url}
-                    className="w-full max-h-[440px] aspect-video object-contain"
-                  />
-                </div>
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => downloadTextFile(getAutoflowVisualBatch(), `autoflow_prompts_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download .txt</span>
+              </button>
 
-                        {/* Batch Export for Web Automations (Google Flow & Meta AI) */}
-            {activeProject && activeProject.scenes && activeProject.scenes.length > 0 && (
-              <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-900 via-[#0d1624] to-slate-950 border border-emerald-500/30 p-5 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                
-                <div className="relative z-10">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowRawDrawer(!showRawDrawer)}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>{showRawDrawer ? 'Tutup Preview Raw' : 'Lihat Batch Raw'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Raw Drawer for AutoFlow */}
+          {showRawDrawer && (
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                <span>Raw Batch AutoFlow (1 baris per adegan):</span>
+                <span className="text-[10px] text-slate-500">Format siap paste langsung ke ekstensi browser</span>
+              </div>
+              <textarea
+                readOnly
+                rows={6}
+                value={getAutoflowVisualBatch()}
+                className="w-full p-3 rounded-lg bg-black/60 border border-slate-800 font-mono text-[11px] text-emerald-300/90 leading-relaxed focus:outline-none"
+              />
+            </div>
+          )}
+
+          {/* Daftar Adegan Detail (Scene 1 s/d N) */}
+          <div className="space-y-4">
+            {(!activeProject?.scenes || activeProject.scenes.length === 0) ? (
+              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
+                <p className="text-xs text-slate-400">
+                  Belum ada adegan cerita yang di-generate. Buka menu &quot;Setup Cerita&quot; di atas lalu klik &quot;Generate Story &amp; Production Steps&quot;.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowStorySetup(true)}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition"
+                >
+                  Buka Setup Cerita
+                </button>
+              </div>
+            ) : (
+              activeProject.scenes.map((scene) => (
+                <div
+                  key={scene.id || scene.scene_order}
+                  className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                     <div className="flex items-center space-x-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white tracking-wide flex items-center space-x-2">
-                          <span>Batch Export for Web Automations</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold uppercase">
-                            Google Flow + Meta AI
-                          </span>
-                        </h4>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          1-Click Copy prompts massal untuk Autoflow Extension &amp; Meta Automation Extension (100% Bebas Kuota API).
-                        </p>
-                      </div>
+                      <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
+                        Scene {scene.scene_order.toString().padStart(2, '0')}
+                      </span>
+                      <span className="text-xs font-bold text-white">
+                        {characterName} • {stylePreset}
+                      </span>
                     </div>
 
                     <button
-                      onClick={() => setShowBatchPreview(!showBatchPreview)}
-                      className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-medium self-start sm:self-auto cursor-pointer"
+                      type="button"
+                      onClick={() => copyToClipboard(
+                        `${scene.visual_prompt} | Character: ${characterName}, ${characterLockPrompt} | Art Style: ${stylePreset}, 8k resolution`,
+                        `scene_${scene.scene_order}`
+                      )}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
                     >
-                      {showBatchPreview ? 'Sembunyikan Preview' : 'Lihat Preview Prompts'}
+                      {copiedType === `scene_${scene.scene_order}` ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span>Tersalin!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copy Scene Prompt</span>
+                        </>
+                      )}
                     </button>
                   </div>
 
-                  {/* Buttons Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-                    {/* Button 1: Copy Anchor Character Prompts */}
-                    <button
-                      onClick={() => copyToClipboard(getAnchorCharacterPrompt(), 'anchor')}
-                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full mb-2">
-                        <Lock className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                        {copiedType === 'anchor' ? (
-                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
-                            <Check className="w-3 h-3" />
-                            <span>Copied!</span>
-                          </span>
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
-                        )}
-                      </div>
-                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
-                        Copy Anchor Character Prompts
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
-                        Format Google Flow ({characterName})
-                      </span>
-                    </button>
-
-                    {/* Button 2: Copy Autoflow Visual Prompts */}
-                    <button
-                      onClick={() => copyToClipboard(getAutoflowVisualBatch(), 'autoflow')}
-                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full mb-2">
-                        <ImageIcon className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                        {copiedType === 'autoflow' ? (
-                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
-                            <Check className="w-3 h-3" />
-                            <span>Copied {activeProject.scenes.length} Lines!</span>
-                          </span>
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
-                        )}
-                      </div>
-                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
-                        Copy Autoflow Visual Prompts (Batch)
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
-                        {activeProject.scenes.length} baris prompt untuk Autoflow
-                      </span>
-                    </button>
-
-                    {/* Button 3: Copy Meta Motion Prompts */}
-                    <button
-                      onClick={() => copyToClipboard(getMetaMotionBatch(), 'motion')}
-                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full mb-2">
-                        <Film className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                        {copiedType === 'motion' ? (
-                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
-                            <Check className="w-3 h-3" />
-                            <span>Copied {activeProject.scenes.length} Motions!</span>
-                          </span>
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
-                        )}
-                      </div>
-                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
-                        Copy Meta Motion Prompts (Batch)
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
-                        {activeProject.scenes.length} baris motion prompt untuk Meta AI
-                      </span>
-                    </button>
-
-                    {/* Button 4: Download Full Project Package */}
-                    <button
-                      onClick={handleDownloadPackage}
-                      className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-teal-950/60 hover:from-emerald-900/80 hover:to-teal-900/80 border border-emerald-600/40 hover:border-emerald-400/60 transition flex flex-col text-left group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between w-full mb-2">
-                        <Download className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" />
-                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                      </div>
-                      <span className="text-xs font-bold text-emerald-200 group-hover:text-white">
-                        Download Project Package (.json)
-                      </span>
-                      <span className="text-[10px] text-emerald-400/80 mt-1 line-clamp-1">
-                        Naskah lengkap, timing &amp; storyboard metadata
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* Expandable Preview Section */}
-                  {showBatchPreview && (
-                    <div className="mt-4 p-4 rounded-xl bg-black/60 border border-slate-800 space-y-3">
-                      <div>
-                        <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
-                          Preview: Autoflow Visual Prompts ({activeProject.scenes.length} Scenes, 1 baris = 1 adegan)
-                        </div>
-                        <textarea
-                          readOnly
-                          rows={4}
-                          value={getAutoflowVisualBatch()}
-                          className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
-                          Preview: Meta Motion Prompts ({activeProject.scenes.length} Motions, 1 baris = 1 kamera)
-                        </div>
-                        <textarea
-                          readOnly
-                          rows={3}
-                          value={getMetaMotionBatch()}
-                          className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none"
-                        />
-                      </div>
+                  {/* Teks Narasi Bahasa Indonesia */}
+                  <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-1.5">
+                      <Volume2 className="w-3 h-3" />
+                      <span>Narasi Suara (Indonesian Voiceover)</span>
                     </div>
-                  )}
-
-                  {/* Auto-Ingest Callout */}
-                  <div className="mt-3.5 px-3.5 py-2.5 rounded-lg bg-black/40 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-400">
-                    <span className="flex items-center space-x-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>
-                        Drop klip MP4 Meta AI ke <code className="text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded font-mono">storage/raw_downloads/</code> (otomatis disortir &amp; dirakit):
-                      </span>
-                    </span>
-                    <code className="font-mono text-emerald-300 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/40">
-                      run_auto_ingest.bat
-                    </code>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Scenes Timeline */}
-            <div className="mt-6 space-y-4">
-              {!activeProject || !activeProject.scenes || activeProject.scenes.length === 0 ? (
-                <div className="text-center py-16 text-slate-500">
-                  <Clapperboard className="w-12 h-12 mx-auto mb-3 text-slate-700" />
-                  <p className="text-sm font-medium">Belum ada storyboard.</p>
-                  <p className="text-xs text-slate-600 mt-1">
-                    Isi form di sebelah kiri untuk menghasilkan skrip manhwa dan panel adegan.
-                  </p>
-                </div>
-              ) : (
-                activeProject.scenes.map((scene) => (
-                  <div
-                    key={scene.id}
-                    onClick={() => setSelectedScene(scene)}
-                    className={`rounded-xl border p-4 transition cursor-pointer ${
-                      selectedScene?.id === scene.id
-                        ? 'bg-slate-800/70 border-indigo-500/80 shadow-lg shadow-indigo-500/10'
-                        : 'bg-slate-900/60 border-slate-800/80 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4 mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-6 h-6 rounded-md bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-mono font-bold flex items-center justify-center">
-                          {scene.scene_order}
-                        </span>
-                        <span className="text-xs font-bold text-white uppercase tracking-wider">
-                          Scene {scene.scene_order}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center space-x-2 text-[10px] font-mono">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">
-                          {scene.camera_motion}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-violet-300 border border-slate-700">
-                          {scene.voice_emotion}
-                        </span>
-                        {renderSceneStatusBadge(scene.status)}
-                      </div>
-                    </div>
-
-                    {/* Narration script */}
-                    <div className="bg-black/30 rounded-lg p-2.5 border border-slate-800/60 my-2">
-                      <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 font-mono mb-1">
-                        <Volume2 className="w-3 h-3 text-slate-500" />
-                        <span>Narration Voiceover:</span>
-                      </div>
-                      <p className="text-xs text-slate-200 leading-relaxed italic">
-                        "{scene.narration_text}"
-                      </p>
-                    </div>
-
-                    {/* Visual Prompt preview */}
-                    <div className="bg-black/20 rounded-lg p-2.5 border border-slate-800/40 text-[11px] font-mono text-slate-400 leading-relaxed">
-                      <span className="text-indigo-400 font-semibold">Prompt: </span>
-                      {scene.visual_prompt}
-                    </div>
-
-                    {/* Media attachments if rendered */}
-                    {(scene.image_url || scene.audio_url) && (
-                      <div className="mt-3 pt-3 border-t border-slate-800 space-y-3">
-                        {scene.image_url && (
-                          <div className="overflow-hidden rounded-lg border border-slate-800 bg-black/40">
-                            <img
-                              src={scene.image_url}
-                              alt={`Scene ${scene.scene_order} panel`}
-                              className="w-full max-h-72 object-cover rounded-lg hover:scale-105 transition-transform duration-300"
-                            />
-                          </div>
-                        )}
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                          {scene.image_url && (
-                            <div className="flex items-center space-x-2 text-xs text-emerald-400">
-                              <ImageIcon className="w-3.5 h-3.5" />
-                              <span>Panel Rendered</span>
-                            </div>
-                          )}
-                          {scene.audio_url && (
-                            <div className="flex items-center space-x-2 w-full sm:w-auto">
-                              <Volume2 className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                              <audio
-                                controls
-                                src={scene.audio_url}
-                                className="h-7 w-full sm:w-60 accent-indigo-500"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Per-Scene Action Controls: Regenerate Buttons */}
-                    <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        Per-Scene Action:
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={(e) => handleRegenerateImage(scene.id, e)}
-                          disabled={Boolean(regeneratingMap[scene.id])}
-                          className="px-2.5 py-1 rounded-md bg-purple-950/40 hover:bg-purple-900/60 border border-purple-700/50 text-[10px] text-purple-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
-                          title="Generate panel gambar baru dengan prompt ini"
-                        >
-                          <ImageIcon className={`w-3 h-3 ${regeneratingMap[scene.id] === 'image' ? 'animate-spin' : ''}`} />
-                          <span>Regenerate Image</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => handleRegenerateVoice(scene.id, e)}
-                          disabled={Boolean(regeneratingMap[scene.id])}
-                          className="px-2.5 py-1 rounded-md bg-sky-950/40 hover:bg-sky-900/60 border border-sky-700/50 text-[10px] text-sky-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
-                          title="Synthesize ulang suara narasi dan subtitle kata"
-                        >
-                          <Volume2 className={`w-3 h-3 ${regeneratingMap[scene.id] === 'voice' ? 'animate-pulse' : ''}`} />
-                          <span>Regenerate Voice</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => handleRegenerateAll(scene.id, e)}
-                          disabled={Boolean(regeneratingMap[scene.id])}
-                          className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] text-slate-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
-                          title="Render ulang gambar, suara, animasi dan subtitle adegan ini"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${regeneratingMap[scene.id] === 'all' ? 'animate-spin' : ''}`} />
-                          <span>Re-render All</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Local Pipeline Runner Status */}
-            {activeProject && activeProject.scenes && activeProject.scenes.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-slate-800">
-                <div className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-800/40 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div>
-                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-                      <Film className="w-4 h-4 text-indigo-400" />
-                      <span>Production Worker Status</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Jalankan skrip worker lokal untuk merender panel, membuat motion, dan menggabungkan video.
+                    <p className="text-xs text-amber-100/90 leading-relaxed font-sans">
+                      &quot;{scene.narration_text}&quot;
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-700/60 text-[11px] text-emerald-300 font-mono">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1" />
-                      <span>run_auto_ingest.bat</span>
-                      <span className="text-[9px] text-emerald-400/70 font-sans ml-1">(Flow+Meta Auto)</span>
+                  {/* Visual Prompt Box */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Visual Prompt (AutoFlow Ready)
                     </div>
-                    <div className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-black/60 border border-slate-700 text-[11px] text-slate-300 font-mono">
-                      <span>run_worker.bat</span>
-                      <span className="text-[9px] text-slate-500 font-sans ml-1">(Direct API)</span>
-                    </div>
+                    <p className="text-xs font-mono text-emerald-300/90 leading-relaxed select-all">
+                      {scene.visual_prompt}
+                    </p>
                   </div>
                 </div>
-              </div>
+              ))
             )}
           </div>
+
+          {/* Stepper Navigation Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(1)}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Step 1</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCurrentStep(3)}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+            >
+              <span>Lanjut ke Step 3: Camera Motion Prompts</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STEP 3: Camera Motion Prompts (Batch Meta AI) */}
+      {/* ========================================================================= */}
+      {currentStep === 3 && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Step Header */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[11px] font-semibold text-sky-400 mb-1.5">
+                <span>STEP 3 • META AI 3D MOTION ENGINE</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                Camera Motion Prompts (Batch Meta AI Automation)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Instruksi pergerakan kamera sinematik 3D (crash zoom, pan tracking, aura burst, drifting particles) untuk ekstensi Meta AI.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(getMetaMotionBatch(), 'meta_batch')}
+                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-sky-600/20 transition cursor-pointer"
+              >
+                {copiedType === 'meta_batch' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Semua Motion Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy All for Meta Automation</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => downloadTextFile(getMetaMotionBatch(), `meta_motion_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download .txt</span>
+              </button>
+            </div>
+          </div>
+
+          {/* List Motion Prompts per Scene */}
+          <div className="space-y-3.5">
+            {(!activeProject?.scenes || activeProject.scenes.length === 0) ? (
+              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-400">
+                Belum ada adegan. Buka Step 1 &amp; generate cerita terlebih dahulu.
+              </div>
+            ) : (
+              activeProject.scenes.map((scene) => {
+                const motionPrompt = getMetaMotionPrompt(scene);
+                return (
+                  <div
+                    key={scene.id || scene.scene_order}
+                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2.5">
+                        <span className="px-2 py-0.5 rounded-md bg-sky-500/20 border border-sky-500/30 text-sky-300 font-mono text-xs font-bold">
+                          Scene {scene.scene_order.toString().padStart(2, '0')}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono text-slate-300 uppercase">
+                          {scene.camera_motion || 'zoom_in'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(motionPrompt, `motion_${scene.scene_order}`)}
+                        className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition"
+                      >
+                        {copiedType === `motion_${scene.scene_order}` ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Motion</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-xs font-mono text-sky-200/90 leading-relaxed select-all">
+                      {motionPrompt}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Stepper Navigation Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(2)}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Step 2</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCurrentStep(4)}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+            >
+              <span>Lanjut ke Step 4: BGM &amp; Soundtrack</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STEP 4: BGM & Soundtrack Setup */}
+      {/* ========================================================================= */}
+      {currentStep === 4 && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Step Header */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[11px] font-semibold text-amber-400 mb-1.5">
+                <span>STEP 4 • AUDIO &amp; SOUNDTRACK ENGINE</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                BGM Preset &amp; Soundtrack Setup
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Pilih preset musik latar sinematik atau gunakan prompt AI Music Generator untuk membuat musik orisinal di Suno / Udio.
+              </p>
+            </div>
+          </div>
+
+          {/* Grid Preset BGM */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {bgmOptions.map((opt) => (
+              <div
+                key={opt.id}
+                onClick={() => setBgmPreset(opt.id as any)}
+                className={`p-4 rounded-2xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
+                  bgmPreset === opt.id
+                    ? 'bg-amber-950/40 border-amber-500/80 shadow-lg shadow-amber-500/10'
+                    : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xl">{opt.icon}</span>
+                    {bgmPreset === opt.id && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-[10px] font-bold text-amber-400 border border-amber-500/30">
+                        AKTIF
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-bold text-white mt-2">{opt.label}</h3>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{opt.desc}</p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyToClipboard(opt.aiMusicPrompt, `music_${opt.id}`);
+                    }}
+                    className="w-full inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 transition"
+                  >
+                    {copiedType === `music_${opt.id}` ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span>Prompt Musik Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Prompt Suno / Udio</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Preview Narasi Suara Edge-TTS per Adegan */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-2">
+                <Volume2 className="w-4 h-4 text-indigo-400" />
+                <span>Preview Narasi Suara Edge-TTS Bahasa Indonesia</span>
+              </div>
+              <span className="text-[11px] text-slate-400">Suara: id-ID-ArdiNeural (Dramatic Narration)</span>
+            </div>
+
+            <div className="space-y-2.5">
+              {activeProject?.scenes?.map((scene) => (
+                <div
+                  key={scene.id || scene.scene_order}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[11px] font-bold">
+                      Scene {scene.scene_order.toString().padStart(2, '0')}
+                    </span>
+                    <span className="text-slate-200 font-medium">
+                      &quot;{scene.narration_text}&quot;
+                    </span>
+                  </div>
+
+                  {scene.audio_url ? (
+                    <audio controls src={scene.audio_url} className="h-8 max-w-[220px]" />
+                  ) : (
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-1 rounded border border-emerald-800/50">
+                      Word-Timestamps Ready
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Stepper Navigation Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(3)}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Step 3</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCurrentStep(5)}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+            >
+              <span>Lanjut ke Step 5: Final Assembly</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STEP 5: Final Assembly & Compilation */}
+      {/* ========================================================================= */}
+      {currentStep === 5 && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Step Header */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-semibold text-emerald-400 mb-1.5">
+                <span>STEP 5 • FINAL ASSEMBLY &amp; COMPILATION</span>
+              </div>
+              <h2 className="text-lg font-bold text-white">
+                Perakitan Final Episode (Audio, Kara Subtitles &amp; Video Concat)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Drop kumpulan video klip MP4 dari Meta AI, lalu klik &quot;Assemble Final Episode&quot; untuk mengeksekusi vokal Edge-TTS, subtitle karaoke dinamis, SFX, dan BGM.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={fetchProjects}
+              className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Sync Local Clips</span>
+            </button>
+          </div>
+
+          {/* Pengamanan Anti-Perakitan Liar Callout */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-indigo-500/30 flex items-start space-x-3 text-xs text-slate-300">
+            <ShieldCheck className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-bold text-white">Perlindungan Perakitan Terkontrol:</span>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Perakitan otomatis liar saat sistem baru dibuka telah dinonaktifkan. Seluruh eksekusi vokal Edge-TTS, subtitle karaoke dinamis (.ass), transisi SFX, dan stitching FFmpeg hanya akan dimulai setelah Anda menekan tombol utama <strong className="text-emerald-300">&quot;Assemble Final Episode&quot;</strong> di bawah.
+              </p>
+            </div>
+          </div>
+
+          {/* Area Dropzone Video MP4 dari Meta AI */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
+              <div
+                onClick={() => videoClipsInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 bg-slate-900/50 hover:bg-slate-900 flex flex-col items-center justify-center text-center cursor-pointer transition group"
+              >
+                <input
+                  type="file"
+                  ref={videoClipsInputRef}
+                  onChange={handleVideoClipsUpload}
+                  multiple
+                  accept="video/mp4,video/webm,video/mov"
+                  className="hidden"
+                />
+
+                {isUploadingClips ? (
+                  <div className="py-6 flex flex-col items-center space-y-2">
+                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-400" />
+                    <span className="text-xs text-slate-300">Mengunggah &amp; mengidentifikasi klip video...</span>
+                  </div>
+                ) : (
+                  <div className="py-6 space-y-2.5">
+                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto group-hover:scale-105 transition">
+                      <Video className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">
+                        Drop Kumpulan Video MP4 Meta AI di Sini
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 max-w-sm">
+                        Pilih sekaligus semua file unduhan dari Meta AI (scene 1 s/d {totalRequiredScenes}). Atau simpan langsung di folder lokal:
+                      </p>
+                      <code className="mt-2 inline-block px-2.5 py-1 rounded bg-slate-950 font-mono text-[10px] text-emerald-300 border border-slate-800">
+                        storage/raw_downloads/{activeProject?.id || 'project_id'}/
+                      </code>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Status Readiness Scene Clips */}
+              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <span className="text-white">Status Verifikasi Klip Scene:</span>
+                  <span className="text-emerald-400">
+                    {verifiedClipsCount}/{totalRequiredScenes} Klip Terdeteksi
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {Array.from({ length: totalRequiredScenes }).map((_, idx) => {
+                    const scNum = idx + 1;
+                    const isReady = !!uploadedClips[scNum];
+                    return (
+                      <div
+                        key={scNum}
+                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                          isReady
+                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                            : 'bg-slate-950 border-slate-800 text-slate-500'
+                        }`}
+                      >
+                        <span className="font-mono font-semibold">Scene {scNum.toString().padStart(2, '0')}</span>
+                        {isReady ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-slate-600" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Kolom Kanan: Tombol Utama & Instruksi Assemble */}
+            <div className="space-y-4">
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-900 border border-indigo-500/30 space-y-4 shadow-xl">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Eksekusi Final Studio</h3>
+                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                    Sistem akan menyatukan suara Edge-TTS, membakar subtitle karaoke dinamis (.ass), menambahkan efek suara transisi (whoosh, slash, impact), dan mixing BGM 3-fase.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTriggerAssemble}
+                  disabled={isVideoJobActive}
+                  className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:opacity-95 text-sm font-black text-slate-950 shadow-xl shadow-emerald-500/20 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {isVideoJobActive ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Sedang Merakit Final Episode...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Clapperboard className="w-4 h-4 text-slate-950" />
+                      <span>Assemble Final Episode</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Local Terminal Hint */}
+                <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                  <div className="flex items-center space-x-1.5 text-slate-300 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Perintah Worker Lokal:</span>
+                  </div>
+                  <code className="block p-2 rounded bg-black/80 font-mono text-[10px] text-emerald-300 border border-slate-800 select-all">
+                    run_auto_ingest.bat
+                  </code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Player Video Final Episode (Jika Sudah Selesai) */}
+          {(isVideoJobComplete || activeProject?.video_url) && (
+            <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/40 space-y-4 shadow-2xl animate-fadeIn">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-base font-bold text-white">
+                    Final Episode Siap Tayang (1080x1920 Vertikal)
+                  </h3>
+                </div>
+
+                {activeProject?.video_url && (
+                  <a
+                    href={activeProject.video_url}
+                    download={`recap_${activeProject.id.slice(0, 8)}.mp4`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition shadow-md shadow-emerald-600/20"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Final Cut MP4</span>
+                  </a>
+                )}
+              </div>
+
+              {activeProject?.video_url && (
+                <div className="max-w-sm mx-auto aspect-[9/16] rounded-xl overflow-hidden border border-slate-800 bg-black shadow-2xl">
+                  <video
+                    src={activeProject.video_url}
+                    controls
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stepper Navigation Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setCurrentStep(4)}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Step 4</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

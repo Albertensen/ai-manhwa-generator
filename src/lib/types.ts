@@ -46,7 +46,7 @@ export interface ManhwaScene {
 export interface ManhwaVideoJob {
   id: string;
   project_id: string;
-  status: 'pending' | 'processing' | 'rendering' | 'stitching' | 'completed' | 'failed';
+  status: 'pending' | 'pending_assembly' | 'processing' | 'rendering' | 'stitching' | 'completed' | 'failed';
   progress_percent: number;
   video_url?: string;
   error_message?: string;

@@ -487,7 +487,8 @@ def run_watcher(
     project_id: str = None,
     project_file: str = None,
     clean_start: bool = True,
-    scan_downloads: bool = False
+    scan_downloads: bool = False,
+    force_assemble: bool = False
 ):
     """Continuous folder monitoring watcher loop with strict isolation and timestamp validation."""
     startup_time = time.time() if clean_start else 0.0
@@ -535,6 +536,7 @@ def run_watcher(
     print("=" * 66 + "\n")
 
     last_reported_count = -1
+    notified_ready = False
 
     while True:
         try:
@@ -564,15 +566,33 @@ def run_watcher(
 
             # Check if all scenes are ready
             if current_count >= total_scenes and total_scenes > 0:
-                print("\n" + "#" * 66)
-                print(f"[CONFIRMATION] All {total_scenes} clips are verified and present!")
-                print(f"[COUNTDOWN] Finalize pipeline will begin in 4 seconds. Press Ctrl+C to abort.")
-                print("#" * 66)
-                time.sleep(4)
-                asyncio.run(finalize_project(project))
-                print("\n[WATCHER] Production complete. Continuing to listen for next batch...")
-                last_reported_count = -1
-                effective_min_ts = time.time()
+                # Query DB to check if user clicked "Assemble Final Episode" in Web Studio
+                proj_db = supabase_get(f"manhwa_projects?id=eq.{p_id}&limit=1")
+                proj_status = proj_db[0].get("status") if proj_db else project.get("status")
+                jobs_db = supabase_get(f"manhwa_video_jobs?project_id=eq.{p_id}&order=created_at.desc&limit=1")
+                job_status = jobs_db[0].get("status") if jobs_db else ""
+
+                should_assemble = (
+                    force_assemble or
+                    proj_status in ("stitching", "rendering") or
+                    job_status in ("pending_assembly", "stitching")
+                )
+
+                if should_assemble:
+                    print("\n" + "#" * 66)
+                    print(f"[ASSEMBLE TRIGGERED] Web Studio requested final assembly for '{title}'!")
+                    print(f"[COUNTDOWN] Finalize pipeline starting in 3 seconds...")
+                    print("#" * 66)
+                    time.sleep(3)
+                    asyncio.run(finalize_project(project))
+                    print("\n[WATCHER] Production complete. Continuing to listen...")
+                    last_reported_count = -1
+                    effective_min_ts = time.time()
+                else:
+                    if not notified_ready:
+                        print(f"\n[READY] All {total_scenes} clips are present and verified in drop folder!")
+                        print(f"[WAITING FOR USER] Buka Web Studio Step 5 dan klik 'Assemble Final Episode' untuk mulai merakit.\n")
+                        notified_ready = True
 
         except KeyboardInterrupt:
             print("\n[WATCHER] Stopped by user.")
@@ -591,6 +611,7 @@ if __name__ == "__main__":
     parser.add_argument("--poll-interval", type=int, default=4, help="Seconds between folder scans")
     parser.add_argument("--clean-start", action="store_true", default=True, help="Ignore files created before startup")
     parser.add_argument("--scan-downloads", action="store_true", default=False, help="Also scan Windows Downloads folder with strict filter")
+    parser.add_argument("--force-assemble", action="store_true", default=False, help="Immediately assemble when clips ready without waiting for Web Studio click")
     args = parser.parse_args()
 
     if args.watch:
@@ -599,7 +620,8 @@ if __name__ == "__main__":
             project_id=args.project_id,
             project_file=args.project_file,
             clean_start=args.clean_start,
-            scan_downloads=args.scan_downloads
+            scan_downloads=args.scan_downloads,
+            force_assemble=args.force_assemble
         )
     else:
         proj = find_latest_active_project(args.project_id, args.project_file)
