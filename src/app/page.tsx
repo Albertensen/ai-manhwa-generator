@@ -16,7 +16,11 @@ import {
   Clock,
   Trash2,
   Music,
-  RotateCcw
+  RotateCcw,
+  Copy,
+  Check,
+  Download,
+  FileText
 } from 'lucide-react';
 import { ManhwaProject, ManhwaScene } from '@/lib/types';
 
@@ -40,7 +44,111 @@ export default function StudioPage() {
   const [selectedScene, setSelectedScene] = useState<ManhwaScene | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [regeneratingMap, setRegeneratingMap] = useState<Record<string, 'image' | 'voice' | 'all' | null>>({});
+    const [regeneratingMap, setRegeneratingMap] = useState<Record<string, 'image' | 'voice' | 'all' | null>>({});
+  const [copiedType, setCopiedType] = useState<string | null>(null);
+  const [showBatchPreview, setShowBatchPreview] = useState<boolean>(false);
+
+  // Helper functions for Batch Web Automation Export (Google Flow & Meta AI)
+  const getAnchorCharacterPrompt = () => {
+    return `Master Character Reference Sheet:
+Character Name: ${characterName}
+Art Style Preset: ${stylePreset}
+Appearance Prompt: ${characterLockPrompt}
+Quality Tags: masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ultra-detailed face, expressive sharp eyes, clean lineart, high contrast rim lighting, dark atmospheric studio background, 8k resolution, highly consistent master character sheet.
+Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anatomy, flat shading, 3D CGI, western comic style`;
+  };
+
+  const getAutoflowVisualBatch = () => {
+    if (!activeProject?.scenes || activeProject.scenes.length === 0) return '';
+    const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
+    return sorted.map((s) => {
+      const cleanVisual = s.visual_prompt.replace(/[\r\n]+/g, ' ').trim();
+      return `Scene ${s.scene_order}: ${cleanVisual} | Character: ${characterName}, ${characterLockPrompt} | Art Style: ${stylePreset}, masterpiece manhwa webtoon style, high contrast, 8k resolution`;
+    }).join('\n');
+  };
+
+  const getMetaMotionPrompt = (scene: ManhwaScene) => {
+    const motion = scene.camera_motion || 'zoom_in';
+    const visual = (scene.visual_prompt || '').toLowerCase();
+    
+    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('dagger') || visual.includes('axe')) {
+      return 'Dynamic explosive camera push forward, violent surging mana aura, lightning and sparks flying outward, intense anime action choreography, 3D parallax depth, high quality animation';
+    }
+    if (motion === 'zoom_in') {
+      return 'Cinematic slow push in on character, hair and clothes fluttering gently in the breeze, glowing mana embers drifting in dark atmosphere, 3D depth, smooth animation';
+    }
+    if (motion === 'zoom_out') {
+      return 'Epic slow pull-back camera zoom out revealing colossal dark dungeon surroundings, atmospheric fog and dust drifting, dramatic anime depth';
+    }
+    if (motion === 'pan_left') {
+      return 'Smooth horizontal tracking pan left across the scene, cinematic parallax layers, ambient particles floating, high detail animation';
+    }
+    if (motion === 'pan_right') {
+      return 'Smooth horizontal tracking pan right, dynamic parallax layers, glowing energy motes, sharp anime animation';
+    }
+    if (motion === 'tilt_up') {
+      return 'Dramatic towering vertical camera tilt up from ground to ceiling, soaring energy pillars, epic scale reveal, anime lighting';
+    }
+    if (motion === 'orbital') {
+      return 'Cinematic 3D orbital camera arc around character, shifting rim light reflections, floating magic particles, smooth animation';
+    }
+    return 'Cinematic subtle organic movement, gentle breathing, clothes fluttering slightly in the wind, soft glowing particle drift, anime 3D depth';
+  };
+
+  const getMetaMotionBatch = () => {
+    if (!activeProject?.scenes || activeProject.scenes.length === 0) return '';
+    const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
+    return sorted.map((s) => getMetaMotionPrompt(s)).join('\n');
+  };
+
+  const copyToClipboard = async (text: string, type: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedType(type);
+      setTimeout(() => setCopiedType(null), 2500);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleDownloadPackage = () => {
+    if (!activeProject) return;
+    const data = {
+      version: '1.0',
+      project_id: activeProject.id,
+      title: activeProject.title,
+      synopsis: activeProject.synopsis,
+      genre: activeProject.genre,
+      art_style: activeProject.art_style || stylePreset,
+      bgm_preset: bgmPreset,
+      total_scenes: activeProject.scenes?.length || 0,
+      character: {
+        name: characterName,
+        appearance_locked_prompt: characterLockPrompt,
+        reference_image_url: activeProject.characters?.[0]?.reference_image_url || null,
+      },
+      scenes: (activeProject.scenes || []).map((s) => ({
+        scene_order: s.scene_order,
+        narration_text: s.narration_text,
+        visual_prompt: s.visual_prompt,
+        camera_motion: s.camera_motion,
+        meta_motion_prompt: getMetaMotionPrompt(s),
+        voice_emotion: s.voice_emotion,
+        duration_seconds: s.duration_seconds || 4.5,
+      })),
+      exported_at: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `manhwa_project_${activeProject.id.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Presets mapping
   const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
@@ -622,6 +730,175 @@ export default function StudioPage() {
               </div>
             )}
 
+                        {/* Batch Export for Web Automations (Google Flow & Meta AI) */}
+            {activeProject && activeProject.scenes && activeProject.scenes.length > 0 && (
+              <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-900 via-[#0d1624] to-slate-950 border border-emerald-500/30 p-5 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="relative z-10">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-800">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white tracking-wide flex items-center space-x-2">
+                          <span>Batch Export for Web Automations</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold uppercase">
+                            Google Flow + Meta AI
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          1-Click Copy prompts massal untuk Autoflow Extension &amp; Meta Automation Extension (100% Bebas Kuota API).
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setShowBatchPreview(!showBatchPreview)}
+                      className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-medium self-start sm:self-auto cursor-pointer"
+                    >
+                      {showBatchPreview ? 'Sembunyikan Preview' : 'Lihat Preview Prompts'}
+                    </button>
+                  </div>
+
+                  {/* Buttons Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                    {/* Button 1: Copy Anchor Character Prompts */}
+                    <button
+                      onClick={() => copyToClipboard(getAnchorCharacterPrompt(), 'anchor')}
+                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full mb-2">
+                        <Lock className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                        {copiedType === 'anchor' ? (
+                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" />
+                            <span>Copied!</span>
+                          </span>
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
+                        Copy Anchor Character Prompts
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
+                        Format Google Flow ({characterName})
+                      </span>
+                    </button>
+
+                    {/* Button 2: Copy Autoflow Visual Prompts */}
+                    <button
+                      onClick={() => copyToClipboard(getAutoflowVisualBatch(), 'autoflow')}
+                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full mb-2">
+                        <ImageIcon className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                        {copiedType === 'autoflow' ? (
+                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" />
+                            <span>Copied {activeProject.scenes.length} Lines!</span>
+                          </span>
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
+                        Copy Autoflow Visual Prompts (Batch)
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
+                        {activeProject.scenes.length} baris prompt untuk Autoflow
+                      </span>
+                    </button>
+
+                    {/* Button 3: Copy Meta Motion Prompts */}
+                    <button
+                      onClick={() => copyToClipboard(getMetaMotionBatch(), 'motion')}
+                      className="p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-500/50 transition flex flex-col text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full mb-2">
+                        <Film className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                        {copiedType === 'motion' ? (
+                          <span className="flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded">
+                            <Check className="w-3 h-3" />
+                            <span>Copied {activeProject.scenes.length} Motions!</span>
+                          </span>
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                        )}
+                      </div>
+                      <span className="text-xs font-bold text-slate-200 group-hover:text-white">
+                        Copy Meta Motion Prompts (Batch)
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-1 line-clamp-1">
+                        {activeProject.scenes.length} baris motion prompt untuk Meta AI
+                      </span>
+                    </button>
+
+                    {/* Button 4: Download Full Project Package */}
+                    <button
+                      onClick={handleDownloadPackage}
+                      className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-teal-950/60 hover:from-emerald-900/80 hover:to-teal-900/80 border border-emerald-600/40 hover:border-emerald-400/60 transition flex flex-col text-left group cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full mb-2">
+                        <Download className="w-4 h-4 text-emerald-300 group-hover:scale-110 transition-transform" />
+                        <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                      </div>
+                      <span className="text-xs font-bold text-emerald-200 group-hover:text-white">
+                        Download Project Package (.json)
+                      </span>
+                      <span className="text-[10px] text-emerald-400/80 mt-1 line-clamp-1">
+                        Naskah lengkap, timing &amp; storyboard metadata
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Expandable Preview Section */}
+                  {showBatchPreview && (
+                    <div className="mt-4 p-4 rounded-xl bg-black/60 border border-slate-800 space-y-3">
+                      <div>
+                        <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                          Preview: Autoflow Visual Prompts ({activeProject.scenes.length} Scenes, 1 baris = 1 adegan)
+                        </div>
+                        <textarea
+                          readOnly
+                          rows={4}
+                          value={getAutoflowVisualBatch()}
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                          Preview: Meta Motion Prompts ({activeProject.scenes.length} Motions, 1 baris = 1 kamera)
+                        </div>
+                        <textarea
+                          readOnly
+                          rows={3}
+                          value={getMetaMotionBatch()}
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 text-[10px] font-mono text-slate-300 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Auto-Ingest Callout */}
+                  <div className="mt-3.5 px-3.5 py-2.5 rounded-lg bg-black/40 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>
+                        Unduhan MP4 dari Meta AI akan otomatis disortir dan disatukan oleh:
+                      </span>
+                    </span>
+                    <code className="font-mono text-emerald-300 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/40">
+                      python backend/auto_ingest_worker.py --watch
+                    </code>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Scenes Timeline */}
             <div className="mt-6 space-y-4">
               {!activeProject || !activeProject.scenes || activeProject.scenes.length === 0 ? (
@@ -773,10 +1050,16 @@ export default function StudioPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <code className="px-2.5 py-1.5 rounded-lg bg-black/60 border border-slate-700 text-[11px] text-indigo-300 font-mono">
-                      run_worker.bat
-                    </code>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-700/60 text-[11px] text-emerald-300 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-1" />
+                      <span>run_auto_ingest.bat</span>
+                      <span className="text-[9px] text-emerald-400/70 font-sans ml-1">(Flow+Meta Auto)</span>
+                    </div>
+                    <div className="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-black/60 border border-slate-700 text-[11px] text-slate-300 font-mono">
+                      <span>run_worker.bat</span>
+                      <span className="text-[9px] text-slate-500 font-sans ml-1">(Direct API)</span>
+                    </div>
                   </div>
                 </div>
               </div>

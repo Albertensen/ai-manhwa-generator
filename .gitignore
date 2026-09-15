@@ -45,3 +45,6 @@ test_*
 /storage/motions/*
 tsconfig.tsbuildinfo
 !backend/test_longform_simulation.py
+
+/storage/raw_downloads/*
+/storage/project_clips/*
