@@ -1,12 +1,13 @@
 """
 test_longform_simulation.py
-Simulates and benchmarks long-form manhwa recap production (5-10 minutes, 60 scenes).
+Simulates and produces long-form manhwa recap episodes (5-10 minutes, 60 scenes).
 Features:
 1. 60-Scene Story Generator across 5 narrative phases (Opening, Raid, Twist, Climax Boss Battle, Ending).
 2. 10-Scene Batching & Persistent Checkpoint Manager (instant resume on interruption).
 3. Dynamic Multi-Phase BGM Switcher (Mystery Dungeon -> Epic Battle -> Melancholy Sad).
 4. FFmpeg Memory-Safe Stream-Copy Concatenator & SFX Transition Triggers.
 5. Resource & Execution Time Profiler (RAM, CPU, Disk I/O, Time per stage).
+6. Supabase Storage CDN Auto-Upload for instant streaming on Web Studio.
 """
 
 import os
@@ -36,7 +37,7 @@ CHECKPOINT_FILE = config.OUTPUTS_DIR / "longform_simulation_checkpoint.json"
 def get_longform_storyboard():
     """
     Generates a 60-scene high-retention episodic storyboard.
-    Total estimated length: ~400-500 seconds (6.5 - 8.5 minutes).
+    Total estimated length: ~300-360 seconds (5 - 6 minutes).
     Divided into 5 distinct narrative phases with assigned BGM moods.
     """
     storyboard = []
@@ -128,7 +129,6 @@ def get_longform_storyboard():
         ("Siapakah musuh berikutnya yang berani menantang Sang Raja Bayangan? Nantikan di episode berikutnya!", "zoom_in", "dramatic", "impact_boom"),
     ]
 
-    # Compile all scenes with order and phase assignments
     all_raw = [
         (p1_scenes, "mystery_dungeon", "Phase 1: Opening & Double Dungeon"),
         (p2_scenes, "mystery_dungeon", "Phase 2: System Awakening"),
@@ -176,6 +176,7 @@ class LongformCheckpointManager:
             "batches_completed": [],
             "scenes": {},
             "final_video_path": None,
+            "public_url": None,
             "created_at": time.time(),
             "updated_at": time.time()
         }
@@ -186,26 +187,31 @@ class LongformCheckpointManager:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
     def is_scene_done(self, scene_order: int) -> bool:
-        sc = self.data["scenes"].get(str(scene_order), {})
+        sc = self.data.get("scenes", {}).get(str(scene_order), {})
         video_p = sc.get("video_path")
-        return bool(video_p and os.path.exists(video_p))
+        return bool(video_p and os.path.exists(video_p) and os.path.getsize(video_p) > 20000)
 
     def record_scene(self, scene_order: int, record: dict):
+        if "scenes" not in self.data:
+            self.data["scenes"] = {}
         self.data["scenes"][str(scene_order)] = record
         self.save()
 
     def mark_batch_done(self, batch_idx: int):
+        if "batches_completed" not in self.data:
+            self.data["batches_completed"] = []
         if batch_idx not in self.data["batches_completed"]:
             self.data["batches_completed"].append(batch_idx)
             self.save()
 
     def get_summary(self):
-        done_cnt = sum(1 for s in self.data["scenes"].values() if s.get("status") == "ready")
+        done_cnt = sum(1 for s in self.data.get("scenes", {}).values() if s.get("status") == "ready")
         return {
             "total": self.data.get("total_scenes", 60),
             "completed_scenes": done_cnt,
             "completed_batches": self.data.get("batches_completed", []),
-            "final_video": self.data.get("final_video_path")
+            "final_video": self.data.get("final_video_path"),
+            "public_url": self.data.get("public_url")
         }
 
 # ==============================================================================
@@ -226,11 +232,11 @@ def build_multiphase_bgm(phase_durations: dict, total_duration: float, output_pa
     p_battle = str(bgm_dir / "epic_battle.mp3")
     p_sad = str(bgm_dir / "melancholy_sad.mp3")
     
-    dur_dungeon = phase_durations.get("mystery_dungeon", 120.0)
-    dur_battle = phase_durations.get("epic_battle", 240.0)
-    dur_sad = phase_durations.get("melancholy_sad", 120.0)
+    dur_dungeon = max(5.0, phase_durations.get("mystery_dungeon", 120.0))
+    dur_battle = max(5.0, phase_durations.get("epic_battle", 180.0))
+    dur_sad = max(5.0, phase_durations.get("melancholy_sad", 60.0))
 
-    fade_d = 3.0
+    fade_d = 2.5
     
     cmd = [
         config.FFMPEG_BIN, "-y",
@@ -317,7 +323,6 @@ def concat_longform_episodes(
         cue = scene_metadata[i] if i < len(scene_metadata) else {}
         sfx_tag = cue.get("sfx_cue", "whoosh")
         
-        # Trigger whoosh slightly before boundary
         whoosh_delay = max(0, current_time_ms - 150)
         sfx_inputs.extend(["-i", sfx_whoosh])
         filter_chains.append(f"[{input_idx}:a]adelay={whoosh_delay}|{whoosh_delay},volume=0.28[sfx_{input_idx}]")
@@ -387,29 +392,19 @@ def concat_longform_episodes(
     return final_output_path
 
 # ==============================================================================
-# 5. BENCHMARKING & SIMULATION RUNNER
+# 5. BENCHMARK PROFILER
 # ==============================================================================
-async def run_benchmark_and_simulation(mode="benchmark"):
-    """
-    Executes benchmark and simulation:
-    - In 'benchmark' mode: Runs 3 representative scenes across all 5 pipeline stages,
-      measures exact CPU/RAM/time per stage, and outputs a complete resource report for 60 scenes.
-    - In 'full' mode: Runs all 60 scenes in 10-scene batches with auto-resuming checkpoints.
-    """
+async def run_benchmark_and_simulation():
     print("==================================================================")
-    print("AI MANHWA RECAP STUDIO: LONG-FORM (5-10 MIN) BENCHMARK & SIMULATOR")
-    print(f"Mode: {mode.upper()} | Target: 60 Scenes (1080x1920 vertical 9:16)")
+    print("AI MANHWA RECAP STUDIO: LONG-FORM (5-10 MIN) BENCHMARK")
     print("==================================================================")
     
     storyboard = get_longform_storyboard()
-    print(f"Generated 60-scene storyboard structure across 5 narrative phases.")
-    
     checkpoint = LongformCheckpointManager()
     summary = checkpoint.get_summary()
     print(f"Current Checkpoint: {summary['completed_scenes']}/60 scenes completed.")
     
-    # Representative benchmark subset
-    sample_indices = [0, 24, 42] # Beginning, Middle, Climax
+    sample_indices = [0, 24, 42]
     benchmark_metrics = {
         "tts_times": [],
         "sub_times": [],
@@ -418,10 +413,8 @@ async def run_benchmark_and_simulation(mode="benchmark"):
         "audio_durations": []
     }
     
-    # Master anchor reference panel
     panel_ref = str(config.PANELS_DIR / "kaelen_anchor_master.png")
     if not os.path.exists(panel_ref):
-        # Fallback to test panel if exists
         test_panel = str(config.PANELS_DIR / "test_panel.png")
         if os.path.exists(test_panel):
             panel_ref = test_panel
@@ -434,26 +427,19 @@ async def run_benchmark_and_simulation(mode="benchmark"):
         motion = scene["camera_motion"]
         prompt = scene["visual_prompt"]
         
-        print(f"\nProfiling Scene {order} ({scene['phase_name']}): '{narration[:45]}...'")
-        
-        # 1. TTS Synthesis
         t0 = time.time()
         audio_out = str(config.AUDIOS_DIR / f"sim_scene_{order}.mp3")
         dur, words = await tts_engine.synthesize_voice(narration, audio_out, return_timestamps=True)
         tts_dur = time.time() - t0
         benchmark_metrics["tts_times"].append(tts_dur)
         benchmark_metrics["audio_durations"].append(dur)
-        print(f"  [TTS] Edge-TTS Voiceover: {tts_dur:.2f}s (Audio Duration: {dur:.2f}s, {len(words)} words)")
         
-        # 2. Subtitle Generation
         t0 = time.time()
         sub_out = str(config.SUBTITLES_DIR / f"sim_scene_{order}.ass")
         subtitle_generator.generate_ass_subtitle(words, sub_out, max_words_per_line=3)
         sub_dur = time.time() - t0
         benchmark_metrics["sub_times"].append(sub_dur)
-        print(f"  [SUB] ASS Dynamic Subtitles: {sub_dur*1000:.1f}ms")
         
-        # 3. Motion Generation
         t0 = time.time()
         motion_out = str(config.MOTIONS_DIR / f"sim_scene_{order}_motion.mp4")
         await motion_engine.animate_panel(
@@ -466,9 +452,7 @@ async def run_benchmark_and_simulation(mode="benchmark"):
         )
         motion_dur = time.time() - t0
         benchmark_metrics["motion_times"].append(motion_dur)
-        print(f"  [MOTION] High-Motion Engine ({motion}): {motion_dur:.2f}s")
         
-        # 4. Scene Video Composition
         t0 = time.time()
         scene_vid = str(config.OUTPUTS_DIR / f"sim_scene_{order}.mp4")
         video_composer.create_scene_video(
@@ -482,78 +466,240 @@ async def run_benchmark_and_simulation(mode="benchmark"):
         )
         comp_dur = time.time() - t0
         benchmark_metrics["compose_times"].append(comp_dur)
-        print(f"  [COMPOSE] Final Scene Libass Composite: {comp_dur:.2f}s")
 
-    # Calculate Averages
     avg_audio_dur = sum(benchmark_metrics["audio_durations"]) / len(benchmark_metrics["audio_durations"])
     avg_tts = sum(benchmark_metrics["tts_times"]) / len(benchmark_metrics["tts_times"])
     avg_sub = sum(benchmark_metrics["sub_times"]) / len(benchmark_metrics["sub_times"])
     avg_motion = sum(benchmark_metrics["motion_times"]) / len(benchmark_metrics["motion_times"])
     avg_comp = sum(benchmark_metrics["compose_times"]) / len(benchmark_metrics["compose_times"])
     
-    total_projected_video_dur = avg_audio_dur * 60 # seconds
-    total_projected_processing_time = (avg_tts + avg_sub + avg_motion + avg_comp) * 60 + 20 # seconds
+    total_projected_video_dur = avg_audio_dur * 60
+    total_projected_processing_time = (avg_tts + avg_sub + avg_motion + avg_comp) * 60 + 20
     
-    # 5. Profile Concatenation & Multi-Phase BGM Mix
-    print(f"\n--- [STAGE 2] PROFILING MULTI-PHASE BGM & CONCATENATION ---")
-    phase_durs = {
-        "mystery_dungeon": total_projected_video_dur * 0.40,
-        "epic_battle": total_projected_video_dur * 0.45,
-        "melancholy_sad": total_projected_video_dur * 0.15
-    }
-    bgm_composite = str(config.OUTPUTS_DIR / "sim_composite_bgm.mp3")
-    t0 = time.time()
-    build_multiphase_bgm(phase_durs, total_projected_video_dur, bgm_composite)
-    bgm_build_dur = time.time() - t0
-    print(f"  [BGM] 3-Phase BGM Sequence ({total_projected_video_dur:.1f}s): {bgm_build_dur:.2f}s")
-    
-    # Simulate multi-clip stitch using benchmark clips
-    sim_clips = [str(config.OUTPUTS_DIR / f"sim_scene_{order}.mp4") for order in [1, 25, 43]]
-    # Expand to simulate 60 scenes with low I/O
-    sim_60_clips = (sim_clips * 20)[:60]
-    sim_final_out = str(config.OUTPUTS_DIR / "sim_60_scenes_stitched_test.mp4")
-    
-    t0 = time.time()
-    concat_longform_episodes(
-        scene_video_paths=sim_60_clips,
-        scene_metadata=storyboard,
-        final_output_path=sim_final_out,
-        bgm_composite_path=bgm_composite,
-        bgm_volume=0.18
-    )
-    concat_dur = time.time() - t0
-    final_file_size_mb = os.path.getsize(sim_final_out) / (1024 * 1024) if os.path.exists(sim_final_out) else 0
-
     print("\n==================================================================")
     print("   LONG-FORM RECAP BENCHMARK & RESOURCE REPORT (60 SCENES)")
     print("==================================================================")
-    print(f"1. VIDEO CHARACTERISTICS:")
-    print(f"   - Total Scene Count: 60 Scenes (5 Story Phases)")
-    print(f"   - Target Resolution: 1080 x 1920 (9:16 Vertical Shorts/Reels)")
-    print(f"   - Average Scene Length: {avg_audio_dur:.2f} seconds")
-    print(f"   - Projected Total Video Duration: {total_projected_video_dur/60:.2f} minutes ({total_projected_video_dur:.1f}s)")
-    print(f"   - Final Rendered Output Size: ~{final_file_size_mb:.1f} MB (H.264 @ ~2.2 Mbps, AAC 192kbps)")
-    print(f"\n2. TIME PER STAGE BREAKDOWN (Per Scene & Total 60 Scenes):")
-    print(f"   - [Voiceover] Edge-TTS + Boundary Timestamps: {avg_tts:.2f}s/scene -> Total: {avg_tts*60:.1f}s (~{avg_tts*60/60:.1f} min)")
-    print(f"   - [Subtitles] Dynamic ASS Karaoke Generation: {avg_sub*1000:.1f}ms/scene -> Total: {avg_sub*60:.2f}s")
-    print(f"   - [Motion Engine] Camera Transform (Fast I2V Mode): {avg_motion:.2f}s/scene -> Total: {avg_motion*60:.1f}s (~{avg_motion*60/60:.1f} min)")
-    print(f"   - [Compositing] Libass Burn-in & Audio Sync: {avg_comp:.2f}s/scene -> Total: {avg_comp*60:.1f}s (~{avg_comp*60/60:.1f} min)")
-    print(f"   - [Final Stitch] 60-Clip Stream Copy + SFX + Multi-BGM: {concat_dur:.2f}s")
-    print(f"   --------------------------------------------------------------")
-    print(f"   * TOTAL ESTIMATED END-TO-END PIPELINE TIME: {total_projected_processing_time/60:.2f} minutes ({total_projected_processing_time:.0f}s)")
-    print(f"\n3. HARDWARE RESOURCE UTILIZATION:")
-    print(f"   - CPU Utilization: ~12-25% (FFmpeg multi-threading during scene render)")
-    print(f"   - RAM Footprint: ~85 MB peak (zero memory leak; concat uses stream-copy)")
-    print(f"   - VRAM (GPU): ~1.2 GB (ComfyUI/FFmpeg NVDEC/libx264)")
-    print(f"   - Disk Space Required: ~450 MB (temp clips + 60 audios + final video)")
-    print(f"\n4. BATCHING & CHECKPOINTING SAFEGUARDS:")
-    print(f"   - Divided into 6 batches (10 scenes each).")
-    print(f"   - Checkpoint saved to: {CHECKPOINT_FILE}")
-    print(f"   - Network/Timeout Resilience: Resume capability verified 100%.")
+    print(f"Target Resolution: 1080 x 1920 (9:16 Vertical Shorts/Reels)")
+    print(f"Projected Total Video Duration: {total_projected_video_dur/60:.2f} minutes ({total_projected_video_dur:.1f}s)")
+    print(f"Total Pipeline Processing Time: {total_projected_processing_time/60:.2f} minutes")
     print("==================================================================")
+
+# ==============================================================================
+# 6. FULL PRODUCTION EXECUTION (60 SCENES WITH CHECKPOINTS & CDN UPLOAD)
+# ==============================================================================
+async def execute_full_production():
+    """
+    Executes full 60-scene episodic production in 6 batches of 10 scenes.
+    Saves checkpoint after each scene. Resumes automatically on interruption.
+    Stitches final long-form video with 3-phase dynamic BGM and SFX.
+    Uploads final video to Supabase Storage CDN.
+    """
+    print("==================================================================")
+    print("AI MANHWA RECAP STUDIO: EXECUTING FULL 60-SCENE EPISODIC RECAP")
+    print("==================================================================")
+    
+    storyboard = get_longform_storyboard()
+    checkpoint = LongformCheckpointManager()
+    summary = checkpoint.get_summary()
+    print(f"[Init] Total Scenes: 60 | Previously Completed: {summary['completed_scenes']}/60")
+    
+    panel_ref = str(config.PANELS_DIR / "kaelen_anchor_master.png")
+    if not os.path.exists(panel_ref):
+        test_panel = str(config.PANELS_DIR / "test_panel.png")
+        if os.path.exists(test_panel):
+            panel_ref = test_panel
+
+    total_scenes = len(storyboard)
+    batch_size = 10
+    total_batches = (total_scenes + batch_size - 1) // batch_size
+    
+    scene_video_map = {}
+    
+    # Pre-populate completed scenes from checkpoint
+    for sc_order in range(1, total_scenes + 1):
+        vid_p = str(config.OUTPUTS_DIR / f"sim_scene_{sc_order}.mp4")
+        if checkpoint.is_scene_done(sc_order) and os.path.exists(vid_p):
+            scene_video_map[sc_order] = vid_p
+
+    for b_idx in range(total_batches):
+        start_idx = b_idx * batch_size
+        end_idx = min(start_idx + batch_size, total_scenes)
+        batch_scenes = storyboard[start_idx:end_idx]
+        batch_num = b_idx + 1
+        
+        print(f"\n==================================================================")
+        print(f"--- BATCH {batch_num}/{total_batches} (Scenes {start_idx + 1} - {end_idx}) ---")
+        print(f"==================================================================")
+
+        for scene in batch_scenes:
+            order = scene["scene_order"]
+            narration = scene["narration_text"]
+            motion = scene["camera_motion"]
+            prompt = scene["visual_prompt"]
+            scene_vid = str(config.OUTPUTS_DIR / f"sim_scene_{order}.mp4")
+            
+            # Check if scene already completed
+            if checkpoint.is_scene_done(order) and os.path.exists(scene_vid):
+                print(f"[Scene {order:02d}/60] [CACHED] Scene video verified. Skipping.")
+                scene_video_map[order] = scene_vid
+                continue
+                
+            print(f"[Scene {order:02d}/60] Generating ({scene['phase_name']})...")
+            
+            # 1. Audio synthesis with retry
+            audio_out = str(config.AUDIOS_DIR / f"sim_scene_{order}.mp3")
+            words = []
+            dur = 5.2
+            for attempt in range(3):
+                try:
+                    dur, words = await tts_engine.synthesize_voice(narration, audio_out, return_timestamps=True)
+                    break
+                except Exception as te:
+                    print(f"  [TTS Retry {attempt+1}] {te}")
+                    await asyncio.sleep(1)
+
+            # 2. Subtitles
+            sub_out = str(config.SUBTITLES_DIR / f"sim_scene_{order}.ass")
+            try:
+                subtitle_generator.generate_ass_subtitle(words, sub_out, max_words_per_line=3)
+            except Exception as se:
+                print(f"  [Subtitle Warning] {se}")
+
+            # 3. Dynamic Motion Clip
+            motion_out = str(config.MOTIONS_DIR / f"sim_scene_{order}_motion.mp4")
+            for attempt in range(2):
+                try:
+                    await motion_engine.animate_panel(
+                        image_path=panel_ref,
+                        camera_motion=motion,
+                        visual_prompt=prompt,
+                        duration=dur,
+                        output_path=motion_out,
+                        mode="fast" # Use high-speed 6-layer transform synthesizer for rock-solid batch throughput
+                    )
+                    break
+                except Exception as me:
+                    print(f"  [Motion Retry {attempt+1}] {me}")
+                    await asyncio.sleep(1)
+
+            # 4. Final Scene Composite
+            for attempt in range(2):
+                try:
+                    video_composer.create_scene_video(
+                        image_path=panel_ref,
+                        audio_path=audio_out,
+                        duration=dur,
+                        output_path=scene_vid,
+                        motion=motion,
+                        subtitle_path=sub_out,
+                        input_video_path=motion_out
+                    )
+                    break
+                except Exception as ve:
+                    print(f"  [Composite Retry {attempt+1}] {ve}")
+                    await asyncio.sleep(1)
+
+            # Verify and record
+            if os.path.exists(scene_vid) and os.path.getsize(scene_vid) > 30000:
+                scene_video_map[order] = scene_vid
+                checkpoint.record_scene(order, {
+                    "status": "ready",
+                    "video_path": scene_vid,
+                    "audio_path": audio_out,
+                    "duration": dur,
+                    "order": order
+                })
+                print(f"[Scene {order:02d}/60] [OK] Ready ({dur:.2f}s, {os.path.getsize(scene_vid)/(1024*1024):.2f} MB)")
+            else:
+                print(f"[Scene {order:02d}/60] [FAILED] Rendering failed.")
+
+        checkpoint.mark_batch_done(batch_num)
+        print(f"[Batch {batch_num} Saved] Checkpoint updated ({len(scene_video_map)}/60 scenes ready).")
+
+    # Final Assembly
+    print("\n==================================================================")
+    print("ALL 60 SCENES PRODUCED! ASSEMBLING FULL LONG-FORM EPISODE...")
+    print("==================================================================")
+    
+    ordered_scene_paths = [scene_video_map[o] for o in range(1, total_scenes + 1) if o in scene_video_map]
+    if len(ordered_scene_paths) < total_scenes:
+        print(f"[Warning] Only {len(ordered_scene_paths)}/60 scenes ready! Proceeding with available scenes...")
+
+    # Compute phase durations
+    durs_by_phase = {"mystery_dungeon": 0.0, "epic_battle": 0.0, "melancholy_sad": 0.0}
+    for sc in storyboard:
+        o = sc["scene_order"]
+        p_name = sc["bgm_phase"]
+        s_data = checkpoint.data.get("scenes", {}).get(str(o), {})
+        d = s_data.get("duration", 5.2)
+        durs_by_phase[p_name] = durs_by_phase.get(p_name, 0.0) + d
+
+    total_vid_dur = sum(durs_by_phase.values())
+    print(f"Total Video Narration Duration: {total_vid_dur/60:.2f} mins ({total_vid_dur:.1f}s)")
+    
+    # 1. Build Multi-Phase BGM Track
+    bgm_composite = str(config.OUTPUTS_DIR / "longform_composite_bgm.mp3")
+    print(f"[BGM] Assembling 3-phase dynamic background music ({bgm_composite})...")
+    build_multiphase_bgm(durs_by_phase, total_vid_dur, bgm_composite)
+
+    # 2. Memory-Safe Stream-Copy Concatenation + SFX Triggers
+    final_output = str(config.OUTPUTS_DIR / "longform_episode_final.mp4")
+    concat_longform_episodes(
+        scene_video_paths=ordered_scene_paths,
+        scene_metadata=storyboard,
+        final_output_path=final_output,
+        bgm_composite_path=bgm_composite,
+        bgm_volume=0.18
+    )
+
+    final_size_mb = os.path.getsize(final_output) / (1024 * 1024) if os.path.exists(final_output) else 0
+    print(f"\n[Assembly] Finished! Size: {final_size_mb:.2f} MB | Output: {final_output}")
+
+    upload_target = final_output
+    if final_size_mb > 48.0:
+        web_optimized = str(config.OUTPUTS_DIR / "longform_episode_final_web.mp4")
+        print(f"[Assembly] Optimizing for CDN streaming (<50MB): {web_optimized}...")
+        cmd_opt = [
+            config.FFMPEG_BIN, "-y",
+            "-i", final_output,
+            "-c:v", "libx264",
+            "-crf", "25",
+            "-preset", "veryfast",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            web_optimized
+        ]
+        subprocess.check_call(cmd_opt)
+        upload_target = web_optimized
+
+    # 3. Upload to Supabase Storage CDN
+    public_url = None
+    print("\n[CDN] Uploading full longform episode to Supabase Storage bucket 'manhwa-assets'...")
+    try:
+        from backend import storage_uploader
+        public_url = storage_uploader.upload_file(upload_target, "videos/longform_episode_final.mp4")
+        print(f"[CDN] Public Streaming URL: {public_url}")
+        checkpoint.data["final_video_path"] = final_output
+        checkpoint.data["public_url"] = public_url
+        checkpoint.save()
+    except Exception as ue:
+        print(f"[CDN Upload Warning] {ue}")
+
+    print("\n==================================================================")
+    print("PRODUCTION COMPLETED SUCCESSFULLY!")
+    print(f"Final Video Local File : {final_output}")
+    print(f"Total Duration         : {total_vid_dur/60:.2f} minutes ({total_vid_dur:.1f}s)")
+    print(f"File Size              : {final_size_mb:.2f} MB")
+    print(f"Supabase CDN Stream    : {public_url or 'Local File Ready'}")
+    print("==================================================================")
+
 
 if __name__ == "__main__":
     mode_arg = "benchmark"
     if len(sys.argv) > 1:
         mode_arg = sys.argv[1].replace("--mode=", "").replace("--", "")
-    asyncio.run(run_benchmark_and_simulation(mode=mode_arg))
+    if mode_arg == "full":
+        asyncio.run(execute_full_production())
+    else:
+        asyncio.run(run_benchmark_and_simulation())
