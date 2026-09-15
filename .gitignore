@@ -48,3 +48,4 @@ tsconfig.tsbuildinfo
 
 /storage/raw_downloads/*
 /storage/project_clips/*
+/storage/trash_or_archive/*

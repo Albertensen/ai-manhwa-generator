@@ -88,6 +88,7 @@ def create_scene_video(
         cmd = [
             config.FFMPEG_BIN,
             "-y",
+            "-fflags", "+genpts",
             "-stream_loop", "-1",
             "-i", input_video_path,
             "-i", audio_path,
@@ -162,10 +163,13 @@ def concat_scenes(
     cmd_concat = [
         config.FFMPEG_BIN,
         "-y",
+        "-fflags", "+genpts",
         "-f", "concat",
         "-safe", "0",
         "-i", list_file,
-        "-c", "copy",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
         raw_stitched
     ]
     subprocess.check_call(cmd_concat)
@@ -237,6 +241,7 @@ def concat_scenes(
     cmd_mix = [
         config.FFMPEG_BIN,
         "-y",
+        "-fflags", "+genpts",
         "-i", raw_stitched,
         *sfx_inputs,
         "-filter_complex", filter_complex_str,

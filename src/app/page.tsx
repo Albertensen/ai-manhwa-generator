@@ -888,11 +888,11 @@ Negative Prompt: low quality, blurry, deformed anatomy, extra fingers, bad anato
                     <span className="flex items-center space-x-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       <span>
-                        Unduhan MP4 dari Meta AI akan otomatis disortir dan disatukan oleh:
+                        Drop klip MP4 Meta AI ke <code className="text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded font-mono">storage/raw_downloads/</code> (otomatis disortir &amp; dirakit):
                       </span>
                     </span>
                     <code className="font-mono text-emerald-300 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-800/40">
-                      python backend/auto_ingest_worker.py --watch
+                      run_auto_ingest.bat
                     </code>
                   </div>
                 </div>
