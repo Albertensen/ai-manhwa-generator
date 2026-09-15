@@ -4,7 +4,7 @@ export interface ManhwaProject {
   synopsis: string;
   genre: string;
   art_style: string;
-  status: 'draft' | 'generating_story' | 'story_ready' | 'rendering' | 'completed';
+  status: 'draft' | 'generating_story' | 'story_ready' | 'rendering' | 'stitching' | 'completed';
   created_at: string;
   updated_at: string;
   characters?: ManhwaCharacter[];
@@ -34,9 +34,9 @@ export interface ManhwaScene {
   dialogue_text?: string;
   visual_prompt: string;
   negative_prompt: string;
-  camera_motion: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'static';
+  camera_motion: 'zoom_in' | 'zoom_out' | 'pan_left' | 'pan_right' | 'static' | 'action' | 'tilt_up' | 'orbital';
   voice_emotion: 'dramatic' | 'intense' | 'calm' | 'whisper' | 'angry';
-  status: 'pending' | 'generating_image' | 'image_ready' | 'generating_audio' | 'audio_ready' | 'ready' | 'failed';
+  status: 'pending' | 'generating_image' | 'animating' | 'compositing' | 'image_ready' | 'generating_audio' | 'audio_ready' | 'ready' | 'failed';
   image_url?: string;
   audio_url?: string;
   duration_seconds: number;
@@ -46,7 +46,7 @@ export interface ManhwaScene {
 export interface ManhwaVideoJob {
   id: string;
   project_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'rendering' | 'stitching' | 'completed' | 'failed';
   progress_percent: number;
   video_url?: string;
   error_message?: string;

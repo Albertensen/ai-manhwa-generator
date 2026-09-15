@@ -14,7 +14,9 @@ import {
   CheckCircle2, 
   AlertCircle,
   Clock,
-  Trash2
+  Trash2,
+  Music,
+  RotateCcw
 } from 'lucide-react';
 import { ManhwaProject, ManhwaScene } from '@/lib/types';
 
@@ -25,6 +27,7 @@ export default function StudioPage() {
     '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, athletic silhouette, black hooded long coat with glowing purple mana aura, high contrast manhwa art style, sharp lineart, 8k masterpiece'
   );
   const [stylePreset, setStylePreset] = useState('Solo Leveling / Dark Fantasy');
+  const [bgmPreset, setBgmPreset] = useState<'epic_battle' | 'mystery_dungeon' | 'melancholy_sad'>('epic_battle');
   const [storyIdea, setStoryIdea] = useState(
     'Setelah 10 tahun terjebak di dungeon peringkat terendah, sebuah jendela sistem misterius muncul di hadapannya. Peringkatnya melonjak dari E-rank menjadi Penguasa Bayangan, dan monster bos pertama tunduk di bawah kakinya.'
   );
@@ -37,26 +40,37 @@ export default function StudioPage() {
   const [selectedScene, setSelectedScene] = useState<ManhwaScene | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [regeneratingMap, setRegeneratingMap] = useState<Record<string, 'image' | 'voice' | 'all' | null>>({});
 
   // Presets mapping
-  const stylePresets: Record<string, { prompt: string; desc: string }> = {
+  const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
     'Solo Leveling / Dark Fantasy': {
       prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, black long coat, dark purple shadow aura, solo leveling art style, dramatic rim lighting, 8k',
-      desc: 'Dark shadows, glowing blue/purple aura, intense sharp eyes'
+      desc: 'Dark shadows, glowing blue/purple aura, intense sharp eyes',
+      defaultBgm: 'epic_battle'
     },
     'Omniscient Reader / Modern Hunter': {
       prompt: '1man, solo, neat dark hair, determined obsidian eyes, white trench coat over formal dark suit, modern seoul apocalypse background, webtoon clean lineart, vibrant colors',
-      desc: 'White trenchcoat, modern apocalypse hunter, clean manhwa colors'
+      desc: 'White trenchcoat, modern apocalypse hunter, clean manhwa colors',
+      defaultBgm: 'epic_battle'
     },
     'Murim / Heavenly Demon Cultivation': {
       prompt: '1man, solo, long flowing jet-black hair tied in topknot, crimson glowing eyes, ornate martial arts robes with silver dragon embroidery, floating martial aura, ancient pagoda ruins',
-      desc: 'Traditional martial robes, flowing hair, ancient murim aesthetic'
+      desc: 'Traditional martial robes, flowing hair, ancient murim aesthetic',
+      defaultBgm: 'mystery_dungeon'
     },
     'Villainess / Imperial Noblesse': {
       prompt: '1girl, solo, long wavy platinum blonde hair, piercing amethyst violet eyes, opulent emerald embroidered royal gown, gold jewelry, grand baroque palace ballroom, soft dramatic glow',
-      desc: 'Royal elegance, opulent palace background, lavish webtoon romance'
+      desc: 'Royal elegance, opulent palace background, lavish webtoon romance',
+      defaultBgm: 'melancholy_sad'
     }
   };
+
+  const bgmOptions = [
+    { id: 'epic_battle', label: 'Epic Battle', desc: 'Rhythmic action synth (Solo Leveling)', icon: '⚔️' },
+    { id: 'mystery_dungeon', label: 'Mystery Dungeon', desc: 'Dark ambient suspense & drones', icon: '🔮' },
+    { id: 'melancholy_sad', label: 'Melancholy Sad', desc: 'Emotional slow minor progression', icon: '🥀' }
+  ];
 
   // Fetch projects list
   const fetchProjects = async () => {
@@ -117,7 +131,7 @@ export default function StudioPage() {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 4000);
+    }, 3500);
 
     return () => clearInterval(interval);
   }, [activeProject?.id, activeProject?.scenes, activeProject?.video_url]);
@@ -126,6 +140,7 @@ export default function StudioPage() {
     setStylePreset(presetName);
     if (stylePresets[presetName]) {
       setCharacterLockPrompt(stylePresets[presetName].prompt);
+      setBgmPreset(stylePresets[presetName].defaultBgm);
     }
   };
 
@@ -141,7 +156,7 @@ export default function StudioPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storyIdea,
-          genre: stylePreset,
+          genre: `${stylePreset} (BGM: ${bgmPreset})`,
           characterName,
           characterLockPrompt,
           sceneCount,
@@ -168,6 +183,145 @@ export default function StudioPage() {
     }
   };
 
+  // Per-Scene Actions: Regenerate Image
+  const handleRegenerateImage = async (sceneId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'image' }));
+      // Optimistic local state update
+      setActiveProject(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', image_url: undefined } : s)
+        };
+      });
+
+      const res = await fetch(`/api/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', image_url: null })
+      });
+      if (!res.ok) throw new Error('Gagal merender ulang panel');
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
+    }
+  };
+
+  // Per-Scene Actions: Regenerate Voice
+  const handleRegenerateVoice = async (sceneId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'voice' }));
+      // Optimistic local state update
+      setActiveProject(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', audio_url: undefined } : s)
+        };
+      });
+
+      const res = await fetch(`/api/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', audio_url: null })
+      });
+      if (!res.ok) throw new Error('Gagal membuat suara ulang');
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
+    }
+  };
+
+  // Per-Scene Actions: Regenerate All (Image + Voice + Motion)
+  const handleRegenerateAll = async (sceneId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: 'all' }));
+      setActiveProject(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          scenes: prev.scenes?.map(s => s.id === sceneId ? { ...s, status: 'pending', image_url: undefined, audio_url: undefined } : s)
+        };
+      });
+
+      const res = await fetch(`/api/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'pending', image_url: null, audio_url: null })
+      });
+      if (!res.ok) throw new Error('Gagal me-render ulang adegan penuh');
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setRegeneratingMap(prev => ({ ...prev, [sceneId]: null }));
+    }
+  };
+
+  // Status Badge Renderer
+  const renderSceneStatusBadge = (status: string) => {
+    switch (status) {
+      case 'generating_audio':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-950/80 border border-sky-600/60 text-sky-300 flex items-center space-x-1.5 shadow-sm shadow-sky-500/20">
+            <Volume2 className="w-3 h-3 animate-pulse text-sky-400" />
+            <span>Voice Synth...</span>
+          </span>
+        );
+      case 'generating_image':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-purple-950/80 border border-purple-600/60 text-purple-300 flex items-center space-x-1.5 shadow-sm shadow-purple-500/20">
+            <ImageIcon className="w-3 h-3 animate-spin text-purple-400" />
+            <span>Rendering Panel...</span>
+          </span>
+        );
+      case 'animating':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-cyan-950/80 border border-cyan-600/60 text-cyan-300 flex items-center space-x-1.5 shadow-sm shadow-cyan-500/20">
+            <Film className="w-3 h-3 animate-bounce text-cyan-400" />
+            <span>Animating Motion...</span>
+          </span>
+        );
+      case 'compositing':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-indigo-950/80 border border-indigo-600/60 text-indigo-300 flex items-center space-x-1.5 shadow-sm shadow-indigo-500/20">
+            <Sparkles className="w-3 h-3 animate-spin text-indigo-400" />
+            <span>Burning Subtitles...</span>
+          </span>
+        );
+      case 'ready':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-950/80 border border-emerald-600/60 text-emerald-300 flex items-center space-x-1.5 shadow-sm shadow-emerald-500/20">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span>Ready</span>
+          </span>
+        );
+      case 'failed':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-rose-950/80 border border-rose-600/60 text-rose-300 flex items-center space-x-1.5 shadow-sm shadow-rose-500/20">
+            <AlertCircle className="w-3 h-3 text-rose-400" />
+            <span>Failed</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-amber-950/80 border border-amber-600/60 text-amber-300 flex items-center space-x-1.5 shadow-sm shadow-amber-500/20">
+            <Clock className="w-3 h-3 animate-pulse text-amber-400" />
+            <span>Pending Queue</span>
+          </span>
+        );
+    }
+  };
+
+  const isStitching = activeProject?.video_job?.status === 'stitching' || 
+    (activeProject?.scenes && activeProject.scenes.length > 0 && 
+     activeProject.scenes.every(s => s.status === 'ready') && !activeProject.video_url);
+
   return (
     <div className="space-y-8">
       {/* Top Banner / Hero */}
@@ -177,13 +331,13 @@ export default function StudioPage() {
           <div>
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-semibold mb-3">
               <Lock className="w-3.5 h-3.5" />
-              <span>Character Consistency Engine Active</span>
+              <span>Character Consistency & Dynamic Subtitle Engine Active</span>
             </div>
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              AI Manhwa Recap Studio
+              AI Manhwa & Anime Recap Studio
             </h2>
             <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-              Lock visual traits across all panels. Adapt text into episodic webtoon storyboards with automated TTS voicing and dynamic pan-and-zoom video assembly.
+              Produksi video recap manhwa vertikal (9:16) otomatis dengan subtitle karaoke .ass, high-motion image-to-video, dan transisi SFX sinematik.
             </p>
           </div>
 
@@ -271,6 +425,34 @@ export default function StudioPage() {
                   className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono leading-relaxed"
                   required
                 />
+              </div>
+
+              {/* BGM Soundtrack Preset */}
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 flex items-center space-x-1.5">
+                  <Music className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Cinematic BGM Soundtrack</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {bgmOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setBgmPreset(opt.id as any)}
+                      className={`p-2 rounded-lg text-left text-xs border transition ${
+                        bgmPreset === opt.id
+                          ? 'bg-violet-600/20 border-violet-500 text-violet-200'
+                          : 'bg-slate-800/40 border-slate-700/60 text-slate-400 hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center space-x-1">
+                        <span>{opt.icon}</span>
+                        <span className="truncate">{opt.label}</span>
+                      </div>
+                      <div className="text-[9px] text-slate-500 mt-0.5 truncate">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="border-t border-slate-800/80 pt-4 mt-4">
@@ -390,6 +572,19 @@ export default function StudioPage() {
               )}
             </div>
 
+            {/* Assembling Progress Banner */}
+            {isStitching && (
+              <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-violet-950/60 to-indigo-950/60 border border-violet-500/40 flex items-center space-x-3 text-violet-200">
+                <Sparkles className="w-5 h-5 text-violet-400 animate-spin flex-shrink-0" />
+                <div className="text-xs">
+                  <div className="font-bold">Assembling Full Episode...</div>
+                  <div className="text-violet-300/80 text-[11px] mt-0.5">
+                    Menjahit semua klip adegan, menyematkan subtitle karaoke (.ass), menyisipkan SFX whoosh & impact, dan mixing BGM sinematik.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Final Episode Video Player */}
             {activeProject?.video_url && (
               <div className="mt-6 p-5 rounded-2xl bg-gradient-to-br from-indigo-950/50 via-purple-950/30 to-slate-900 border border-indigo-500/40 shadow-2xl">
@@ -400,10 +595,10 @@ export default function StudioPage() {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-white tracking-wide">
-                        Episode Final Cut Preview
+                        Episode Final Cut Preview (1080x1920)
                       </h4>
                       <p className="text-[11px] text-slate-400">
-                        Full stitched manhwa recap video with cinematic BGM & Ken Burns zoom
+                        Full stitched vertical recap with dynamic .ass subtitles, SFX transitions, and BGM
                       </p>
                     </div>
                   </div>
@@ -465,13 +660,7 @@ export default function StudioPage() {
                         <span className="px-2 py-0.5 rounded bg-slate-800 text-violet-300 border border-slate-700">
                           {scene.voice_emotion}
                         </span>
-                        <span className={`px-2 py-0.5 rounded border ${
-                          scene.status === 'ready' 
-                            ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                            : 'bg-amber-950/60 border-amber-700 text-amber-300'
-                        }`}>
-                          {scene.status}
-                        </span>
+                        {renderSceneStatusBadge(scene.status)}
                       </div>
                     </div>
 
@@ -524,6 +713,47 @@ export default function StudioPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Per-Scene Action Controls: Regenerate Buttons */}
+                    <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[10px] text-slate-500 font-mono">
+                        Per-Scene Action:
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={(e) => handleRegenerateImage(scene.id, e)}
+                          disabled={Boolean(regeneratingMap[scene.id])}
+                          className="px-2.5 py-1 rounded-md bg-purple-950/40 hover:bg-purple-900/60 border border-purple-700/50 text-[10px] text-purple-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
+                          title="Generate panel gambar baru dengan prompt ini"
+                        >
+                          <ImageIcon className={`w-3 h-3 ${regeneratingMap[scene.id] === 'image' ? 'animate-spin' : ''}`} />
+                          <span>Regenerate Image</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => handleRegenerateVoice(scene.id, e)}
+                          disabled={Boolean(regeneratingMap[scene.id])}
+                          className="px-2.5 py-1 rounded-md bg-sky-950/40 hover:bg-sky-900/60 border border-sky-700/50 text-[10px] text-sky-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
+                          title="Synthesize ulang suara narasi dan subtitle kata"
+                        >
+                          <Volume2 className={`w-3 h-3 ${regeneratingMap[scene.id] === 'voice' ? 'animate-pulse' : ''}`} />
+                          <span>Regenerate Voice</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => handleRegenerateAll(scene.id, e)}
+                          disabled={Boolean(regeneratingMap[scene.id])}
+                          className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[10px] text-slate-300 font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
+                          title="Render ulang gambar, suara, animasi dan subtitle adegan ini"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${regeneratingMap[scene.id] === 'all' ? 'animate-spin' : ''}`} />
+                          <span>Re-render All</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
@@ -536,16 +766,16 @@ export default function StudioPage() {
                   <div>
                     <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
                       <Film className="w-4 h-4 text-indigo-400" />
-                      <span>Local Studio Bridge (RTX 3060 Ti)</span>
+                      <span>Production Worker Status</span>
                     </h4>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Jalankan skrip worker lokal untuk merender panel dengan ComfyUI dan menggabungkan video.
+                      Jalankan skrip worker lokal untuk merender panel, membuat motion, dan menggabungkan video.
                     </p>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <code className="px-2.5 py-1.5 rounded-lg bg-black/60 border border-slate-700 text-[11px] text-indigo-300 font-mono">
-                      python backend/worker.py
+                      run_worker.bat
                     </code>
                   </div>
                 </div>

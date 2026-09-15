@@ -8,8 +8,10 @@ STORAGE_DIR = BASE_DIR / "storage"
 PANELS_DIR = STORAGE_DIR / "panels"
 AUDIOS_DIR = STORAGE_DIR / "audios"
 OUTPUTS_DIR = STORAGE_DIR / "outputs"
+SUBTITLES_DIR = STORAGE_DIR / "subtitles"
+MOTIONS_DIR = STORAGE_DIR / "motions"
 
-for d in [PANELS_DIR, AUDIOS_DIR, OUTPUTS_DIR]:
+for d in [PANELS_DIR, AUDIOS_DIR, OUTPUTS_DIR, SUBTITLES_DIR, MOTIONS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Supabase

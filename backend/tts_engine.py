@@ -7,17 +7,41 @@ try:
 except (ImportError, ValueError):
     import config
 
-async def synthesize_voice(text, output_file, voice=config.DEFAULT_VOICE_MALE):
-    """Generates high-quality speech with edge-tts"""
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(output_file)
+async def synthesize_voice(text, output_file, voice=config.DEFAULT_VOICE_MALE, return_timestamps=False):
+    """
+    Generates high-quality speech with edge-tts.
+    If return_timestamps is True, captures word-level boundaries directly from
+    Edge-TTS stream (boundary='WordBoundary') with zero extra compute overhead.
+    Returns:
+        duration (float) if return_timestamps is False
+        (duration, word_events) (tuple) if return_timestamps is True
+    """
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
     
-    # Calculate audio duration using ffprobe / ffmpeg
+    word_events = []
+    with open(output_file, "wb") as f:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                # offset and duration are in 100ns units (ticks)
+                start_sec = chunk["offset"] / 10_000_000.0
+                dur_sec = chunk["duration"] / 10_000_000.0
+                word_events.append({
+                    "text": chunk["text"],
+                    "start": start_sec,
+                    "duration": dur_sec,
+                    "end": start_sec + dur_sec
+                })
+    
     duration = get_audio_duration(output_file)
+    if return_timestamps:
+        return duration, word_events
     return duration
 
 def get_audio_duration(file_path):
-    """Calculates exact audio duration in seconds"""
+    """Calculates exact audio duration in seconds using ffprobe / ffmpeg"""
     try:
         cmd = [
             config.FFMPEG_BIN,

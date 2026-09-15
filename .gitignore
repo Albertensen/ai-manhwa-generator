@@ -40,3 +40,7 @@ output/
 *.log
 
 test_*
+
+/storage/subtitles/*
+/storage/motions/*
+tsconfig.tsbuildinfo

@@ -1,9 +1,9 @@
 @echo off
-title Manhwa Generator - Local RTX Worker
+title Manhwa Generator - Production AI Worker
 cd /d "C:\Users\Administrator\Documents\MANHWA GENERATOR"
 echo ===================================================
-echo Starting Manhwa Generator Local GPU Worker
-echo ComfyUI SDXL + IP-Adapter + Edge-TTS + FFmpeg
+echo Starting Manhwa Generator AI Worker
+echo 9Router Gemini + Playwright Motion + Edge-TTS + FFmpeg
 echo ===================================================
-"C:\ComfyUI\.venv\Scripts\python.exe" backend\worker.py
+"C:\Users\Administrator\AppData\Local\Programs\Python\Python311\python.exe" backend\worker.py
 pause
