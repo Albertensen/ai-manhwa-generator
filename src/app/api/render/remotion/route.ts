@@ -87,37 +87,41 @@ export async function POST(req: Request) {
       'python3',
     ];
     
-    let pythonBin = 'python';
-    for (const cand of pythonCandidates) {
-      if (fs.existsSync(cand)) {
-        pythonBin = cand;
-        break;
-      }
-    }
-
     const cliArgs = [rendererScript, '--project-id', projectId];
     if (bgm_preset) {
       cliArgs.push('--bgm-preset', bgm_preset);
     }
     const cliCommandStr = `python backend/remotion_renderer.py --project-id ${projectId}${bgm_preset ? ` --bgm-preset ${bgm_preset}` : ''}`;
 
-    if (fs.existsSync(rendererScript)) {
-      console.log(`[API /render/remotion] Spawning renderer: ${pythonBin} ${cliArgs.join(' ')}`);
-      
-      const child = spawn(
-        pythonBin,
-        cliArgs,
-        {
-          cwd: rootDir,
-          detached: true,
-          stdio: 'ignore',
-          shell: true,
+    if (!process.env.VERCEL) {
+      try {
+        let pythonBin = 'python';
+        for (const cand of pythonCandidates) {
+          if (fs.existsSync(/* turbopackIgnore: true */ cand)) {
+            pythonBin = cand;
+            break;
+          }
         }
-      );
-      
-      child.unref();
-    } else {
-      console.warn(`[API /render/remotion] Script ${rendererScript} not found on local disk. Job registered in Supabase queue.`);
+
+        if (fs.existsSync(/* turbopackIgnore: true */ rendererScript)) {
+          console.log(`[API /render/remotion] Spawning renderer: ${pythonBin} ${cliArgs.join(' ')}`);
+          const child = spawn(
+            pythonBin,
+            cliArgs,
+            {
+              cwd: rootDir,
+              detached: true,
+              stdio: 'ignore',
+              shell: true,
+            }
+          );
+          child.unref();
+        } else {
+          console.warn(`[API /render/remotion] Script not found locally. Job queued in Supabase.`);
+        }
+      } catch (spawnErr) {
+        console.warn('[API /render/remotion] Local spawn skipped:', spawnErr);
+      }
     }
 
     return NextResponse.json({

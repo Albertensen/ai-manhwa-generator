@@ -58,10 +58,16 @@ export default function MangaFlowStudio() {
   // ---------------------------------------------------------------------------
   // Top Level Navigation
   // ---------------------------------------------------------------------------
-  const [activeTab, setActiveTab] = useState<MangaStudioTab>('canvas_editor');
+  const [activeTab, setActiveTab] = useState<MangaStudioTab>('script_engine');
   const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState<boolean>(false);
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 3500);
+  };
 
   // ---------------------------------------------------------------------------
   // Project & Story Script State (Tab 1)
@@ -319,9 +325,34 @@ export default function MangaFlowStudio() {
 
       setPages(newPages);
       setCurrentPageIndex(0);
+      setActiveTab('canvas_editor');
+      showToast('✨ Cerita berhasil dipecah ke 2 Halaman & Panel Komik! Membuka Comic Canvas...');
     } finally {
       setIsGeneratingStory(false);
     }
+  };
+
+  const handleDownloadProjectJson = () => {
+    const projectData = {
+      id: `proj_${Date.now()}`,
+      title: storyTitle,
+      genre,
+      art_style: artStyle,
+      synopsis: storySynopsis,
+      characters,
+      pages,
+      created_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${storyTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_project.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('📥 File konfigurasi proyek berhasil diunduh!');
   };
 
   // ---------------------------------------------------------------------------
@@ -624,8 +655,23 @@ export default function MangaFlowStudio() {
             </button>
           </div>
 
-          {/* Right Header Actions */}
-          <div className="flex items-center space-x-2">
+          {/* Right Header Actions & System Badges */}
+          <div className="flex items-center space-x-3">
+            <div className="hidden lg:flex items-center space-x-2 text-[11px] font-mono">
+              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-slate-300">Supabase</span>
+              </div>
+              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+                <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                <span className="text-slate-300">RTX 3060 Ti</span>
+              </div>
+              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span className="text-slate-300">Google Flow</span>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => setIsSystemSettingsOpen(true)}
@@ -633,10 +679,29 @@ export default function MangaFlowStudio() {
               title="System Settings (Backend Worker, Voice Engine, CLI)"
             >
               <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden md:inline">System Settings</span>
+              <span className="hidden md:inline">Settings</span>
             </button>
           </div>
         </div>
+
+        {/* Global Toast Notification */}
+        {successToast && (
+          <div className="max-w-7xl mx-auto px-4 pt-2">
+            <div className="p-3 rounded-xl bg-emerald-950/80 border border-emerald-700 text-xs font-semibold text-emerald-200 flex items-center justify-between shadow-lg animate-fadeIn">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{successToast}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessToast(null)}
+                className="text-emerald-400 hover:text-emerald-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* ========================================================================= */}
@@ -960,6 +1025,77 @@ export default function MangaFlowStudio() {
                     ))}
                   </div>
                 </div>
+
+                {/* Prime Agent Autonomous Orchestrator Card */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-950/40 via-purple-950/30 to-slate-900 border border-indigo-500/30 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-600/30">
+                        <Sparkles className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Prime Agent Autonomous Pipeline (Zero-API)
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          Google Flow Scraper + Headless Comic Assembler + Remotion 2.5D Recap
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold">
+                      Zero Cost Mode
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/90 border border-slate-800 text-[11px] font-mono text-slate-300 space-y-1.5">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Proyek Aktif:</span>
+                      <span className="text-white font-bold">{storyTitle}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Karakter Terkunci:</span>
+                      <span className="text-purple-300">{characters.length} Karakter ({characters.map(c => c.name).join(', ')})</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Total Panel Komik:</span>
+                      <span className="text-amber-300">{pages.reduce((acc, p) => acc + p.panels.length, 0)} Panel Siap Generate</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleDownloadProjectJson}
+                      className="flex-1 min-w-[190px] inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white border border-slate-700 transition cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 text-indigo-400" />
+                      <span>Download Script Proyek (.json)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyToClipboard(
+                          `python backend/prime_orchestrator.py --full-pipeline`,
+                          'prime_cmd'
+                        )
+                      }
+                      className="flex-1 min-w-[190px] inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+                    >
+                      {copiedType === 'prime_cmd' ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span>Perintah CLI Tersalin!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Salin Perintah Prime Agent CLI</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -970,6 +1106,34 @@ export default function MangaFlowStudio() {
         {/* ===================================================================== */}
         {activeTab === 'canvas_editor' && (
           <div className="space-y-4 animate-fadeIn">
+            {/* Context & Navigation Banner */}
+            <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center space-x-2.5">
+                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                <span className="text-slate-200">
+                  <strong>Comic Canvas Editor:</strong> Hasil pecahan naskah komik. Klik kotak panel untuk upload gambar, drag &amp; drop balon ucapan, sesuaikan teks dialog, dan tambahkan stiker SFX.
+                </span>
+              </div>
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('script_engine')}
+                  className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Naskah &amp; Karakter</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('export_recap')}
+                  className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-rose-600 hover:opacity-95 font-bold text-white transition shadow-sm cursor-pointer"
+                >
+                  <span>Export &amp; Video Recap</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
             {/* Sub-Header Page Switcher Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-slate-800">
               <div className="flex items-center space-x-2">
