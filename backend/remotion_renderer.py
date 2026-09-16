@@ -150,7 +150,8 @@ def render_remotion_video(props_data: dict, output_file: str = None, timeout: in
         "src/remotion/index.ts",
         "ManhwaRecapComposition",
         output_file,
-        f"--props={str(props_tmp_path)}"
+        f"--props={str(props_tmp_path)}",
+        "--chromium-options=--allow-file-access-from-files --disable-web-security"
     ]
 
     print(f"[RemotionRenderer] Executing: {' '.join(cmd)}")

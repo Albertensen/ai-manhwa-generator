@@ -107,6 +107,222 @@ export default function MangaFlowStudio() {
     },
   ]);
   const [activeCharIndex, setActiveCharIndex] = useState<number>(0);
+  const [isGeneratingStory, setIsGeneratingStory] = useState<boolean>(false);
+
+  const handleAddCharacter = () => {
+    const newIdx = characters.length + 1;
+    const newChar = {
+      id: `char_${Date.now()}`,
+      name: `Karakter Baru ${newIdx}`,
+      role: 'supporting' as const,
+      appearance_locked_prompt: '1person, detailed webtoon art style, highly detailed illustration, 8k',
+      reference_image_url: null,
+    };
+    setCharacters([...characters, newChar]);
+    setActiveCharIndex(characters.length);
+  };
+
+  const handleUpdateCharacter = (field: string, value: string) => {
+    setCharacters(prev => {
+      const copy = [...prev];
+      if (copy[activeCharIndex]) {
+        copy[activeCharIndex] = { ...copy[activeCharIndex], [field]: value };
+      }
+      return copy;
+    });
+  };
+
+  const handleDeleteCharacter = (idx: number) => {
+    if (characters.length <= 1) return;
+    setCharacters(prev => prev.filter((_, i) => i !== idx));
+    setActiveCharIndex(0);
+  };
+
+  const handleBreakdownStory = async () => {
+    setIsGeneratingStory(true);
+    try {
+      const protagonist = characters.find(c => c.role === 'protagonist') || characters[0];
+      const antagonist = characters.find(c => c.role === 'antagonist') || characters[1] || characters[0];
+      
+      const newPages: MangaPageData[] = [
+        {
+          id: `page_${Date.now()}_1`,
+          pageNumber: 1,
+          title: `Halaman 1: Permulaan (${storyTitle})`,
+          layout: 'webtoon',
+          canvasWidth: 720,
+          canvasHeight: 1080,
+          gutterSize: 12,
+          backgroundColor: '#0f172a',
+          panels: [
+            {
+              id: 'p1_1',
+              panelNumber: 1,
+              label: 'Panel 1: Establishing Shot',
+              x: 24,
+              y: 24,
+              width: 672,
+              height: 310,
+              visualPrompt: `Wide cinematic view of ${genre} world, ${storySynopsis.slice(0, 100)}`,
+              dialogue: `Di sinilah kisah ${storyTitle} dimulai...`,
+              speaker: protagonist?.name || 'Narrator'
+            },
+            {
+              id: 'p1_2',
+              panelNumber: 2,
+              label: 'Panel 2: Tension & Focus',
+              x: 24,
+              y: 346,
+              width: 672,
+              height: 310,
+              visualPrompt: `Close up of ${protagonist?.name}, ${protagonist?.appearance_locked_prompt}`,
+              dialogue: 'Aku tidak akan menyerah, apapun yang terjadi!',
+              speaker: protagonist?.name || 'Hero'
+            },
+            {
+              id: 'p1_3',
+              panelNumber: 3,
+              label: 'Panel 3: Climax / Action',
+              x: 24,
+              y: 668,
+              width: 672,
+              height: 310,
+              visualPrompt: `Dynamic battle clash, ${protagonist?.name} vs ${antagonist?.name}, high intensity`,
+              dialogue: 'Terimalah kekuatanku!!',
+              speaker: protagonist?.name || 'Hero',
+              sfxPrompt: 'SLASH!!'
+            }
+          ],
+          bubbles: [
+            {
+              id: 'b1',
+              type: 'oval',
+              x: 60,
+              y: 60,
+              width: 220,
+              height: 80,
+              tailX: 40,
+              tailY: 100,
+              text: `Di sinilah kisah ${storyTitle} dimulai...`,
+              speaker: protagonist?.name || 'Narrator',
+              fontSize: 12,
+              textColor: '#0f172a',
+              bgColor: '#ffffff',
+              borderColor: '#000000',
+            },
+            {
+              id: 'b2',
+              type: 'thought',
+              x: 440,
+              y: 400,
+              width: 220,
+              height: 85,
+              tailX: 180,
+              tailY: 110,
+              text: 'Aku tidak akan menyerah, apapun yang terjadi!',
+              speaker: protagonist?.name || 'Hero',
+              fontSize: 12,
+              textColor: '#0f172a',
+              bgColor: '#ffffff',
+              borderColor: '#000000',
+            },
+            {
+              id: 'b3',
+              type: 'shout',
+              x: 240,
+              y: 760,
+              width: 240,
+              height: 90,
+              tailX: 120,
+              tailY: 115,
+              text: 'Terimalah kekuatanku!!',
+              speaker: protagonist?.name || 'Hero',
+              fontSize: 13,
+              textColor: '#0f172a',
+              bgColor: '#ffffff',
+              borderColor: '#e11d48',
+            }
+          ],
+          sfxStickers: [
+            {
+              id: 'sfx_1',
+              text: 'SLASH!!',
+              x: 280,
+              y: 720,
+              rotation: -8,
+              fontSize: 42,
+              color: '#f59e0b',
+              strokeColor: '#000000',
+              stylePreset: 'impact',
+            }
+          ]
+        },
+        {
+          id: `page_${Date.now()}_2`,
+          pageNumber: 2,
+          title: `Halaman 2: Benturan Kekuatan`,
+          layout: 'action',
+          canvasWidth: 720,
+          canvasHeight: 1080,
+          gutterSize: 12,
+          backgroundColor: '#0f172a',
+          panels: generateLayoutPanels('action', 720, 1080, 12),
+          bubbles: [
+            {
+              id: 'b4',
+              type: 'shout',
+              x: 100,
+              y: 80,
+              width: 230,
+              height: 85,
+              tailX: 40,
+              tailY: 100,
+              text: `Jangan halangi jalanku, ${antagonist?.name}!`,
+              speaker: protagonist?.name || 'Hero',
+              fontSize: 12,
+              textColor: '#0f172a',
+              bgColor: '#ffffff',
+              borderColor: '#e11d48',
+            },
+            {
+              id: 'b5',
+              type: 'shout',
+              x: 420,
+              y: 400,
+              width: 220,
+              height: 90,
+              tailX: 110,
+              tailY: 115,
+              text: 'Mati kau di tanganku!',
+              speaker: antagonist?.name || 'Villain',
+              fontSize: 13,
+              textColor: '#0f172a',
+              bgColor: '#ffffff',
+              borderColor: '#000000',
+            }
+          ],
+          sfxStickers: [
+            {
+              id: 'sfx_2',
+              text: 'DUMMM!',
+              x: 240,
+              y: 780,
+              rotation: 12,
+              fontSize: 46,
+              color: '#e11d48',
+              strokeColor: '#000000',
+              stylePreset: 'slash',
+            }
+          ]
+        }
+      ];
+
+      setPages(newPages);
+      setCurrentPageIndex(0);
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Interactive Comic Canvas State (Tab 2)
@@ -511,6 +727,25 @@ export default function MangaFlowStudio() {
                       className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 leading-relaxed"
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    disabled={isGeneratingStory}
+                    onClick={handleBreakdownStory}
+                    className="w-full inline-flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingStory ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Memecah Naskah ke Komik...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>✨ Pecah Naskah ke Halaman &amp; Panel Komik</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
                 {/* Multi-Character Master Sheet */}
@@ -525,8 +760,8 @@ export default function MangaFlowStudio() {
                     </span>
                   </div>
 
-                  {/* Character Selector Pills */}
-                  <div className="flex space-x-1.5 overflow-x-auto pb-1">
+                  {/* Character Selector Pills + Add Button */}
+                  <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
                     {characters.map((char, idx) => (
                       <button
                         key={char.id}
@@ -541,18 +776,49 @@ export default function MangaFlowStudio() {
                         {char.name} ({char.role})
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      onClick={handleAddCharacter}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-purple-300 transition flex items-center space-x-1 shrink-0 border border-slate-700"
+                      title="Tambah Karakter Baru"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-purple-400" />
+                      <span>+ Karakter</span>
+                    </button>
                   </div>
 
-                  {/* Active Character Detail */}
+                  {/* Active Character Detail - Editable Fields */}
                   {characters[activeCharIndex] && (
                     <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white">
-                          {characters[activeCharIndex].name}
-                        </span>
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                          {characters[activeCharIndex].role}
-                        </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          value={characters[activeCharIndex].name}
+                          onChange={(e) => handleUpdateCharacter('name', e.target.value)}
+                          placeholder="Nama Karakter"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-bold text-white focus:outline-none focus:border-purple-500"
+                        />
+                        <select
+                          value={characters[activeCharIndex].role}
+                          onChange={(e) => handleUpdateCharacter('role', e.target.value)}
+                          className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono uppercase text-purple-300 focus:outline-none"
+                        >
+                          <option value="protagonist">Protagonist</option>
+                          <option value="heroine">Heroine</option>
+                          <option value="antagonist">Antagonist</option>
+                          <option value="supporting">Supporting</option>
+                          <option value="mentor">Mentor</option>
+                        </select>
+                        {characters.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCharacter(activeCharIndex)}
+                            className="p-1.5 rounded-lg hover:bg-rose-950/60 text-rose-400 transition"
+                            title="Hapus Karakter"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
 
                       <div>
@@ -581,9 +847,13 @@ export default function MangaFlowStudio() {
                             )}
                           </button>
                         </div>
-                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 font-mono leading-relaxed">
-                          {characters[activeCharIndex].appearance_locked_prompt}
-                        </div>
+                        <textarea
+                          rows={3}
+                          value={characters[activeCharIndex].appearance_locked_prompt}
+                          onChange={(e) => handleUpdateCharacter('appearance_locked_prompt', e.target.value)}
+                          placeholder="Masukkan ciri fisik karakter..."
+                          className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 font-mono leading-relaxed focus:outline-none focus:border-purple-500"
+                        />
                       </div>
                     </div>
                   )}

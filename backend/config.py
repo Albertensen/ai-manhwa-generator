@@ -12,23 +12,25 @@ SUBTITLES_DIR = STORAGE_DIR / "subtitles"
 MOTIONS_DIR = STORAGE_DIR / "motions"
 RAW_DOWNLOADS_DIR = STORAGE_DIR / "raw_downloads"
 PROJECT_CLIPS_DIR = STORAGE_DIR / "project_clips"
+PROJECTS_DIR = STORAGE_DIR / "projects"
+BROWSER_PROFILE_DIR = STORAGE_DIR / "browser_profile"
 
-for d in [PANELS_DIR, AUDIOS_DIR, OUTPUTS_DIR, SUBTITLES_DIR, MOTIONS_DIR, RAW_DOWNLOADS_DIR, PROJECT_CLIPS_DIR]:
+for d in [PANELS_DIR, AUDIOS_DIR, OUTPUTS_DIR, SUBTITLES_DIR, MOTIONS_DIR, RAW_DOWNLOADS_DIR, PROJECT_CLIPS_DIR, PROJECTS_DIR, BROWSER_PROFILE_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # Supabase
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "https://yegyiqyqtcbvjjqxvyto.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllZ3lpcXlxdGNidmpqcXh2eXRvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4OTExMjg4MiwiZXhwIjoyMTA0Njg4ODgyfQ.s5XlY4qjzXbjx4SfVqjdgyHP108Vtb_f9ucxtVtPK60")
 
-# ComfyUI
+# Google Flow (Nano Banana) Scraper Config
+GOOGLE_FLOW_URL = os.getenv("GOOGLE_FLOW_URL", "https://labs.google/fx/tools/image-fx")
+GOOGLE_FLOW_HEADLESS = os.getenv("GOOGLE_FLOW_HEADLESS", "false").lower() == "true"
+GOOGLE_FLOW_TIMEOUT_SEC = int(os.getenv("GOOGLE_FLOW_TIMEOUT_SEC", "120"))
+
+# ComfyUI (Local Fallback)
 COMFYUI_HOST = os.getenv("COMFYUI_HOST", "http://127.0.0.1:8188")
 COMFYUI_WS = os.getenv("COMFYUI_WS", "ws://127.0.0.1:8188/ws")
 CHECKPOINT_NAME = "animagine-xl-3.1.safetensors"
-
-# 9Router
-ROUTER_URL = os.getenv("ROUTER_BASE_URL", "http://127.0.0.1:20128/v1")
-ROUTER_KEY = os.getenv("ROUTER_API_KEY", "sk-f6d23bb7bbd0260e-v9p3lm-e4eadc94")
-ROUTER_MODEL = os.getenv("ROUTER_MODEL", "COMBO-GEMINI")
 
 # FFmpeg
 FFMPEG_BIN = r"C:\Users\Administrator\prime-agent\ffmpeg_bin\ffmpeg.exe"
@@ -38,5 +40,5 @@ if not os.path.exists(FFMPEG_BIN):
 # TTS & Voice Engine
 DEFAULT_VOICE_MALE = "id-ID-ArdiNeural"
 DEFAULT_VOICE_FEMALE = "id-ID-GadisNeural"
-DEFAULT_VOICE_ENGINE = os.getenv("VOICE_ENGINE", "edge_tts")  # "edge_tts" | "voxcpm"
+DEFAULT_VOICE_ENGINE = os.getenv("VOICE_ENGINE", "edge_tts")
 VOXCPM_MODEL_ID = "openbmb/VoxCPM2"
