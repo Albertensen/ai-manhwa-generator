@@ -12,6 +12,12 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Optional
 
+if sys.platform == 'win32':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Setup backend imports
 try:
     from . import config

@@ -14,6 +14,12 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Optional
 
+if sys.platform == 'win32':
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Setup backend paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -30,18 +36,78 @@ try:
 except ImportError:
     process_panel_layers = None
 
+def adapt_web_script_to_storyboard(data: Dict, project_id: Optional[str] = None) -> Dict:
+    proj_id = project_id or data.get("id") or f"proj_{int(time.time())}"
+    title = data.get("title") or "Manhwa Story"
+    synopsis = data.get("synopsis") or ""
+    genre = data.get("genre") or "Action Fantasy"
+    characters = data.get("characters", [])
+    
+    adapted_pages = []
+    all_scenes = []
+    scene_counter = 1
+
+    for page in data.get("pages", []):
+        page_num = page.get("pageNumber") or page.get("page_number") or 1
+        layout = page.get("layout", "webtoon")
+        raw_panels = page.get("panels", [])
+        page_panels = []
+
+        for pnl in raw_panels:
+            v_prompt = pnl.get("visualPrompt") or pnl.get("visual_prompt") or "cinematic manhwa scene"
+            dialogue = pnl.get("dialogue") or ""
+            speaker = pnl.get("speaker") or "Narrator"
+            sfx = pnl.get("sfxPrompt") or pnl.get("sfx")
+
+            scene_item = {
+                "scene_order": scene_counter,
+                "speaker": speaker,
+                "dialogue": dialogue,
+                "narration": f"{speaker}: {dialogue}" if dialogue else f"Adegan {scene_counter}: {v_prompt[:80]}",
+                "visual_prompt": v_prompt,
+                "camera_motion": "zoom_in" if scene_counter % 2 == 1 else "pan_right",
+                "bubble_type": "shout" if sfx else "oval",
+                "sfx": sfx
+            }
+            page_panels.append(scene_item)
+            all_scenes.append(scene_item)
+            scene_counter += 1
+
+        adapted_pages.append({
+            "page_number": page_num,
+            "layout": layout,
+            "panels": page_panels,
+            "bubbles": page.get("bubbles", []),
+            "sfx_stickers": page.get("sfxStickers", [])
+        })
+
+    if not all_scenes:
+        return generate_default_storyboard(title, synopsis, project_id=proj_id)
+
+    return {
+        "project_id": proj_id,
+        "title": title,
+        "story": synopsis,
+        "genre": genre,
+        "characters": characters,
+        "pages": adapted_pages,
+        "scenes": all_scenes
+    }
+
 def generate_default_storyboard(
     title: str,
     story: str,
     character_name: str = "Kaelen",
     character_prompt: str = "1man, solo, messy black hair, piercing glowing electric blue eyes, black trench coat, athletic build",
     genre: str = "Solo Leveling / Dark Fantasy",
-    num_panels: int = 3
+    num_panels: int = 3,
+    project_id: Optional[str] = None
 ) -> Dict:
     """
     Parses/constructs structured storyboard JSON from user story idea.
     """
-    project_id = f"proj_{int(time.time())}"
+    if not project_id:
+        project_id = f"proj_{int(time.time())}"
     
     # Base manhwa prompt prefix
     style_prefix = "high-end cinematic manhwa style, crisp lineart, digital illustration, trending on webtoon, dramatic rim lighting, 8k masterpiece"
@@ -293,18 +359,32 @@ class PrimeOrchestrator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prime Agent Master Autonomous Orchestrator")
+    parser.add_argument("--project-id", type=str, default=None, help="Project ID or Supabase UUID")
     parser.add_argument("--title", type=str, default="Shadow Sovereign: Bangkitnya Pemburu Bayangan", help="Title of story")
-    parser.add_argument("--story", type=str, default="Kaelen, pemburu terlemah terperangkap di dungeon S-Rank. Tetesan darahnya mengaktifkan belati kuno dan membangkitkan pasukan bayangan!", help="Story premise")
+    parser.add_argument("--story", "--synopsis", dest="story", type=str, default="Kaelen, pemburu terlemah terperangkap di dungeon S-Rank. Tetesan darahnya mengaktifkan belati kuno dan membangkitkan pasukan bayangan!", help="Story premise / synopsis")
+    parser.add_argument("--genre", type=str, default="Solo Leveling / Dark Fantasy", help="Story genre / art style")
     parser.add_argument("--character", type=str, default="Kaelen", help="Protagonist name")
     parser.add_argument("--character-prompt", type=str, default="1man, solo, messy black hair, glowing blue eyes, black trench coat", help="Character appearance locked prompt")
+    parser.add_argument("--script-file", type=str, default=None, help="Path to exported project JSON file")
+    parser.add_argument("--full-pipeline", action="store_true", help="Execute complete end-to-end pipeline")
     parser.add_argument("--skip-scraper", action="store_true", help="Skip live browser scraper and use cached/fallback images")
+    parser.add_argument("--bgm-preset", type=str, default="epic_battle", help="BGM soundtrack preset")
     args = parser.parse_args()
 
     orchestrator = PrimeOrchestrator()
-    storyboard = generate_default_storyboard(
-        title=args.title,
-        story=args.story,
-        character_name=args.character,
-        character_prompt=args.character_prompt
-    )
-    orchestrator.run_full_pipeline(storyboard, skip_scraper=args.skip_scraper)
+
+    if args.script_file and os.path.exists(args.script_file):
+        with open(args.script_file, "r", encoding="utf-8") as f:
+            raw_script = json.load(f)
+        storyboard = adapt_web_script_to_storyboard(raw_script, project_id=args.project_id)
+    else:
+        storyboard = generate_default_storyboard(
+            title=args.title,
+            story=args.story,
+            character_name=args.character,
+            character_prompt=args.character_prompt,
+            genre=args.genre,
+            project_id=args.project_id
+        )
+
+    orchestrator.run_full_pipeline(storyboard, skip_scraper=args.skip_scraper, bgm_preset=args.bgm_preset)
