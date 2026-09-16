@@ -19,11 +19,17 @@ if sys.platform == 'win32':
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
 # Setup backend imports
 try:
-    from . import config
+    from backend import config
 except (ImportError, ValueError):
-    import config
+    try:
+        from . import config
+    except (ImportError, ValueError):
+        import config
 
 from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeout
 
