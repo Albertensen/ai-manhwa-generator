@@ -82,7 +82,7 @@ export default function MangaFlowStudio() {
   );
   const [isGeneratingScript, setIsGeneratingScript] = useState<boolean>(false);
   const [vibesProjectUrl, setVibesProjectUrl] = useState<string>(
-    'https://vibes.ai/projects/6e3400fe-2b8c-4460-988c-092127de0a6f'
+    'https://vibes.ai/projects/57d7487a-ce33-4674-95a5-70eb9212651e'
   );
 
   // Multi-Character Master Sheet

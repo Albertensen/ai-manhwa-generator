@@ -33,7 +33,7 @@ except (ImportError, ValueError):
 
 from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeout
 
-DEFAULT_VIBES_PROJECT_URL = "https://vibes.ai/projects/6e3400fe-2b8c-4460-988c-092127de0a6f"
+DEFAULT_VIBES_PROJECT_URL = "https://vibes.ai/projects/57d7487a-ce33-4674-95a5-70eb9212651e"
 
 class VibesScraper:
     def __init__(
