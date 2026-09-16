@@ -39,7 +39,7 @@ def format_file_url(path_str: str, upload_to_storage: bool = True) -> str:
 
     if upload_to_storage and upload_file:
         try:
-            folder = "cutouts" if "_cutout" in p.name else "panels"
+            folder = "cutouts" if "_cutout" in p.name else ("motions" if p.suffix.lower() == ".mp4" else "panels")
             remote_path = f"{folder}/{p.name}"
             uploaded = upload_file(str(p), remote_path)
             if uploaded:
@@ -51,7 +51,12 @@ def format_file_url(path_str: str, upload_to_storage: bool = True) -> str:
     import mimetypes, base64
     mime, _ = mimetypes.guess_type(str(p))
     if not mime:
-        mime = "image/png" if p.suffix.lower() == ".png" else "audio/mpeg"
+        if p.suffix.lower() == ".mp4":
+            mime = "video/mp4"
+        elif p.suffix.lower() == ".png":
+            mime = "image/png"
+        else:
+            mime = "audio/mpeg"
     try:
         b64 = base64.b64encode(p.read_bytes()).decode("utf-8")
         return f"data:{mime};base64,{b64}"
@@ -75,6 +80,7 @@ def build_props_json(
     for idx, s in enumerate(scenes_data):
         raw_bg = s.get("backgroundUrl") or s.get("image_url") or ""
         raw_fg = s.get("foregroundUrl") or s.get("character_cutout_url") or ""
+        raw_video = s.get("videoUrl") or s.get("video_url") or ""
         raw_audio = s.get("audioUrl") or s.get("audio_url") or ""
 
         # Auto layer separation if foreground cutout is missing
@@ -89,6 +95,7 @@ def build_props_json(
 
         bg_url = format_file_url(raw_bg)
         fg_url = format_file_url(raw_fg) if raw_fg else None
+        video_url = format_file_url(raw_video) if raw_video else None
         audio_url = format_file_url(raw_audio) if raw_audio else None
 
         # Format word timestamps if provided
@@ -107,6 +114,7 @@ def build_props_json(
             "sceneOrder": int(s.get("sceneOrder") or s.get("scene_order") or idx + 1),
             "backgroundUrl": bg_url,
             "foregroundUrl": fg_url,
+            "videoUrl": video_url,
             "narrationText": s.get("narrationText") or s.get("narration_text") or "",
             "audioUrl": audio_url,
             "sfxType": s.get("sfxType") or s.get("sfx_type") or "whoosh",

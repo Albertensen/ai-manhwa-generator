@@ -30,6 +30,7 @@ from backend.google_flow_scraper import GoogleFlowScraper, get_diverse_scene_pan
 from backend import tts_engine
 from backend import voxcpm_client
 from backend import remotion_renderer
+from backend.vibes_scraper import VibesScraper, DEFAULT_VIBES_PROJECT_URL
 
 # Try layer separator
 try:
@@ -174,16 +175,18 @@ class PrimeOrchestrator:
         self,
         story_data: Dict,
         skip_scraper: bool = False,
-        bgm_preset: str = "epic_battle"
+        bgm_preset: str = "epic_battle",
+        vibes_project_url: Optional[str] = None
     ) -> Dict:
         """
         Executes end-to-end production:
         1. Setup project storage
         2. Image generation (Google Flow / Nano Banana)
         3. Comic assembly (PNG & PDF)
-        4. Audio & Word-level subtitle generation
+        4. Audio & Word-level subtitle generation (VoxCPM2)
         5. Layer cutout (RMBG 2.0)
-        6. Remotion 2.5D video rendering
+        6. Motion video generation (Vibes.ai I2V)
+        7. Remotion 2.5D video rendering
         """
         t_start = time.time()
         project_id = story_data["project_id"]
@@ -193,8 +196,9 @@ class PrimeOrchestrator:
         comic_dir = proj_root / "comic_pages"
         audios_dir = proj_root / "audios"
         cutouts_dir = proj_root / "cutouts"
+        motions_dir = proj_root / "motions"
         
-        for d in [panels_dir, comic_dir, audios_dir, cutouts_dir]:
+        for d in [panels_dir, comic_dir, audios_dir, cutouts_dir, motions_dir]:
             d.mkdir(parents=True, exist_ok=True)
 
         print("\n=======================================================")
@@ -299,8 +303,13 @@ class PrimeOrchestrator:
                 except Exception as e:
                     print(f"  - Scene {idx + 1}: Cutout skipped ({e})")
 
-        # --- STEP 5: Render 2.5D Video Recap (Remotion) ---
-        print("\n[Step 5/5] Rendering final 2.5D Motion Video Recap via Remotion...")
+        # --- STEP 5: Motion Video Generation via Vibes.ai (Image-to-Video) ---
+        print("\n[Step 5/6] Generating Scene Motion Video Clips via Vibes.ai (I2V)...")
+        vibes = VibesScraper(project_url=vibes_project_url or DEFAULT_VIBES_PROJECT_URL)
+        motion_clips = vibes.generate_batch_motion(scenes, str(motions_dir))
+
+        # --- STEP 6: Render Final Video Recap via Remotion ---
+        print("\n[Step 6/6] Stitching Scene Motions & Rendering Final Video via Remotion...")
         final_video_path = str(proj_root / f"{project_id}_recap_video.mp4")
         
         # Build Remotion props
@@ -311,6 +320,7 @@ class PrimeOrchestrator:
                 "sceneOrder": idx + 1,
                 "backgroundUrl": sc.get("backgroundUrl"),
                 "foregroundUrl": sc.get("foregroundUrl"),
+                "videoUrl": sc.get("videoUrl") or sc.get("video_path"),
                 "narrationText": sc.get("narration") or sc.get("dialogue"),
                 "audioUrl": sc.get("audio_path"),
                 "durationInSeconds": max(3.0, sc.get("duration_seconds", 4.0)),
@@ -345,6 +355,7 @@ class PrimeOrchestrator:
         print(f"2. Webtoon Strip    : {webtoon_strip_path}")
         if final_video_path and os.path.exists(final_video_path):
             print(f"3. Video Recap MP4  : {final_video_path}")
+        print(f"4. Motion Clips     : {len(motion_clips)} clips generated in {motions_dir.name}/")
         print("=======================================================\n")
 
         manifest = {
@@ -355,6 +366,7 @@ class PrimeOrchestrator:
                 "comic_pdf": pdf_path,
                 "webtoon_strip": webtoon_strip_path,
                 "recap_video_mp4": final_video_path,
+                "motion_clips": motion_clips,
                 "assembled_pages": assembled_pages,
                 "script": str(proj_root / "story_script.json")
             }
@@ -373,6 +385,7 @@ if __name__ == "__main__":
     parser.add_argument("--character", type=str, default="Kaelen", help="Protagonist name")
     parser.add_argument("--character-prompt", type=str, default="1man, solo, messy black hair, glowing blue eyes, black trench coat", help="Character appearance locked prompt")
     parser.add_argument("--script-file", type=str, default=None, help="Path to exported project JSON file")
+    parser.add_argument("--vibes-project-url", type=str, default=DEFAULT_VIBES_PROJECT_URL, help="Vibes.ai project URL for image-to-video motion")
     parser.add_argument("--full-pipeline", action="store_true", help="Execute complete end-to-end pipeline")
     parser.add_argument("--skip-scraper", action="store_true", help="Skip live browser scraper and use cached/fallback images")
     parser.add_argument("--bgm-preset", type=str, default="epic_battle", help="BGM soundtrack preset")
@@ -394,4 +407,9 @@ if __name__ == "__main__":
             project_id=args.project_id
         )
 
-    orchestrator.run_full_pipeline(storyboard, skip_scraper=args.skip_scraper, bgm_preset=args.bgm_preset)
+    orchestrator.run_full_pipeline(
+        storyboard,
+        skip_scraper=args.skip_scraper,
+        bgm_preset=args.bgm_preset,
+        vibes_project_url=args.vibes_project_url
+    )

@@ -1,7 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Series, useVideoConfig } from 'remotion';
 import { ManhwaRecapProps } from '../types';
-import { ParallaxScene } from '../components/ParallaxScene';
+import { MotionVideoScene } from '../components/MotionVideoScene';
 import { KineticCaptions } from '../components/KineticCaptions';
 import { AudioMasterTrack } from '../components/AudioMasterTrack';
 
@@ -31,7 +31,7 @@ export const ManhwaRecapComposition: React.FC<ManhwaRecapProps> = ({
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000000', overflow: 'hidden' }}>
-      {/* 1. Visual Series (Parallax 2.5D + Kinetic Captions per scene) */}
+      {/* 1. Visual Series (Vibes.ai Motion / Parallax 2.5D + Kinetic Captions per scene) */}
       <Series>
         {scenes.map((scene, idx) => {
           const durationFrames = Math.max(
@@ -45,7 +45,8 @@ export const ManhwaRecapComposition: React.FC<ManhwaRecapProps> = ({
               durationInFrames={durationFrames}
               name={`Scene-${scene.sceneOrder || idx + 1}`}
             >
-              <ParallaxScene
+              <MotionVideoScene
+                videoUrl={scene.videoUrl}
                 backgroundUrl={scene.backgroundUrl}
                 foregroundUrl={scene.foregroundUrl}
                 cameraMotion={scene.cameraMotion}

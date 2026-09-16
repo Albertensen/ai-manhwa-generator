@@ -81,6 +81,9 @@ export default function MangaFlowStudio() {
     'Kaelen, pemburu peringkat E terlemah, terperangkap di ruang terdalam dungeon ganda kuil Cartenon. Saat rekan-rekannya meninggalkannya menghadapi patung dewa raksasa, dia menerima quest rahasia misterius: [Pemberian Takhta Shadow Monarch]. Darah hitam mengalir dari bilahnya saat dia bangkit menolak kematian.'
   );
   const [isGeneratingScript, setIsGeneratingScript] = useState<boolean>(false);
+  const [vibesProjectUrl, setVibesProjectUrl] = useState<string>(
+    'https://vibes.ai/projects/6e3400fe-2b8c-4460-988c-092127de0a6f'
+  );
 
   // Multi-Character Master Sheet
   const [characters, setCharacters] = useState<Array<{
@@ -669,6 +672,10 @@ export default function MangaFlowStudio() {
               <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
                 <span className="w-2 h-2 rounded-full bg-amber-400"></span>
                 <span className="text-slate-300">Google Flow</span>
+              </div>
+              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                <span className="text-slate-300">Vibes Motion</span>
               </div>
             </div>
 
@@ -1526,19 +1533,51 @@ export default function MangaFlowStudio() {
                 </div>
               </div>
 
-              {/* 4. Background Worker Status */}
+              {/* 4. Vibes.ai Image-to-Video Engine */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
+                  <span>Vibes.ai Motion Project</span>
+                  <span className="text-[10px] text-purple-400 font-mono font-normal">Meta AI Auth</span>
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={vibesProjectUrl}
+                    onChange={(e) => setVibesProjectUrl(e.target.value)}
+                    placeholder="https://vibes.ai/projects/..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard('python backend/vibes_scraper.py --login', 'vibes_login')}
+                    className="w-full py-1.5 rounded-lg bg-purple-950/60 hover:bg-purple-900/60 border border-purple-800/60 text-[11px] font-bold text-purple-300 transition flex items-center justify-center space-x-1.5"
+                  >
+                    <span>{copiedType === 'vibes_login' ? '✓ Perintah Disalin!' : '🔑 Buka Browser Login Vibes.ai'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 5. Background Worker Status */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2 font-mono">
                 <div className="flex items-center justify-between text-slate-400">
                   <span>Worker Queue:</span>
                   <span className="text-emerald-400">Connected (Supabase)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-400">
-                  <span>ComfyUI Server:</span>
-                  <span className="text-slate-300">127.0.0.1:8188</span>
+                  <span>Visual Engine:</span>
+                  <span className="text-amber-400">Google Flow (Nano Banana 2)</span>
                 </div>
                 <div className="flex items-center justify-between text-slate-400">
-                  <span>Chrome Headless:</span>
-                  <span className="text-emerald-400">Installed (@remotion/cli)</span>
+                  <span>Motion Engine:</span>
+                  <span className="text-purple-400">Vibes.ai (I2V / 60fps)</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Vocal AI:</span>
+                  <span className="text-indigo-400">VoxCPM2 (RTX 3060 Ti)</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Stitching Engine:</span>
+                  <span className="text-emerald-400">Remotion 2.5D</span>
                 </div>
               </div>
             </div>
