@@ -1,0 +1,86 @@
+export interface WordCaption {
+  text: string;
+  start: number; // in seconds
+  end: number;   // in seconds
+  duration?: number;
+}
+
+export type CameraMotion =
+  | 'zoom_in'
+  | 'zoom_out'
+  | 'pan_left'
+  | 'pan_right'
+  | 'tilt_up'
+  | 'action'
+  | 'static';
+
+export interface SceneItem {
+  id: string;
+  sceneOrder: number;
+  backgroundUrl: string;
+  foregroundUrl?: string; // transparent character cutout layer (rembg)
+  narrationText: string;
+  audioUrl?: string;
+  sfxType?: 'whoosh' | 'sword_slash' | 'impact_boom' | 'none';
+  cameraMotion?: CameraMotion;
+  durationInSeconds: number;
+  wordTimestamps?: WordCaption[];
+}
+
+export interface ManhwaRecapProps {
+  projectTitle?: string;
+  bgmUrl?: string;
+  bgmVolume?: number; // default: 0.18
+  scenes: SceneItem[];
+  fps?: number; // default: 30
+  [key: string]: unknown;
+}
+
+export const DEFAULT_RECAP_PROPS: ManhwaRecapProps = {
+  projectTitle: 'Kaelen: The Shadow Monarch Awakens',
+  bgmUrl: 'https://yegyiqyqtcbvjjqxvyto.supabase.co/storage/v1/object/public/manhwa-assets/bgm/epic_battle.mp3',
+  bgmVolume: 0.18,
+  fps: 30,
+  scenes: [
+    {
+      id: 'scene-1',
+      sceneOrder: 1,
+      backgroundUrl: 'https://yegyiqyqtcbvjjqxvyto.supabase.co/storage/v1/object/public/manhwa-assets/panels/kaelen_scene1_upgraded.png',
+      foregroundUrl: 'https://yegyiqyqtcbvjjqxvyto.supabase.co/storage/v1/object/public/manhwa-assets/characters/kaelen_anchor_master.png',
+      narrationText: 'Di tengah kegelapan dungeon tingkat S, sebuah portal ungu kuno mendadak retak terbuka.',
+      cameraMotion: 'zoom_in',
+      durationInSeconds: 4.5,
+      sfxType: 'whoosh',
+      wordTimestamps: [
+        { text: 'Di', start: 0.1, end: 0.3 },
+        { text: 'tengah', start: 0.35, end: 0.7 },
+        { text: 'kegelapan', start: 0.75, end: 1.3 },
+        { text: 'dungeon', start: 1.35, end: 1.8 },
+        { text: 'tingkat', start: 1.85, end: 2.2 },
+        { text: 'S,', start: 2.25, end: 2.5 },
+        { text: 'sebuah', start: 2.7, end: 3.1 },
+        { text: 'portal', start: 3.15, end: 3.5 },
+        { text: 'ungu', start: 3.55, end: 3.8 },
+        { text: 'kuno', start: 3.85, end: 4.1 },
+        { text: 'terbuka.', start: 4.15, end: 4.5 },
+      ],
+    },
+    {
+      id: 'scene-2',
+      sceneOrder: 2,
+      backgroundUrl: 'https://yegyiqyqtcbvjjqxvyto.supabase.co/storage/v1/object/public/manhwa-assets/panels/kaelen_scene1_upgraded.png',
+      narrationText: 'Kaelen merasakan gelombang aura yang mengerikan bergetar dari balik bayangan.',
+      cameraMotion: 'pan_left',
+      durationInSeconds: 4.0,
+      sfxType: 'sword_slash',
+      wordTimestamps: [
+        { text: 'Kaelen', start: 0.1, end: 0.5 },
+        { text: 'merasakan', start: 0.55, end: 1.1 },
+        { text: 'gelombang', start: 1.15, end: 1.6 },
+        { text: 'aura', start: 1.65, end: 2.0 },
+        { text: 'mengerikan', start: 2.05, end: 2.7 },
+        { text: 'bergetar.', start: 2.75, end: 3.8 },
+      ],
+    },
+  ],
+};

@@ -38,6 +38,12 @@ import {
   Zap
 } from 'lucide-react';
 import { ManhwaProject, ManhwaScene, ManhwaCharacter } from '@/lib/types';
+import dynamic from 'next/dynamic';
+
+const RemotionPreviewPlayer = dynamic(
+  () => import('@/components/RemotionPreviewPlayer'),
+  { ssr: false }
+);
 
 interface WizardCharacter {
   id: string;
@@ -100,6 +106,9 @@ export default function StudioPage() {
   const [uploadedClips, setUploadedClips] = useState<Record<number, string>>({});
   const [isUploadingClips, setIsUploadingClips] = useState<boolean>(false);
   const [isAssembling, setIsAssembling] = useState<boolean>(false);
+  const [renderEngine, setRenderEngine] = useState<'remotion' | 'ffmpeg'>('remotion');
+  const [isRemotionRendering, setIsRemotionRendering] = useState<boolean>(false);
+  const [remotionCliCommand, setRemotionCliCommand] = useState<string | null>(null);
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
 
   // Projects & App State
@@ -441,10 +450,18 @@ export default function StudioPage() {
     fetchProjects();
   }, []);
 
-  // Polling project updates when stitching
+  // Polling project updates when stitching or rendering
   useEffect(() => {
     if (!activeProject?.id) return;
-    if (activeProject.status !== 'stitching' && (activeProject.video_job?.status as string) !== 'pending_assembly') return;
+    const isJobActive =
+      activeProject.status === 'stitching' ||
+      activeProject.status === 'rendering' ||
+      (activeProject.video_job?.status as string) === 'pending_assembly' ||
+      (activeProject.video_job?.status as string) === 'rendering' ||
+      isAssembling ||
+      isRemotionRendering;
+
+    if (!isJobActive) return;
 
     const interval = setInterval(async () => {
       try {
@@ -455,6 +472,7 @@ export default function StudioPage() {
             setActiveProject(data.project);
             if (data.project.status === 'completed' || data.project.video_url) {
               setIsAssembling(false);
+              setIsRemotionRendering(false);
             }
           }
         }
@@ -464,7 +482,7 @@ export default function StudioPage() {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [activeProject?.id, activeProject?.status, activeProject?.video_job?.status]);
+  }, [activeProject?.id, activeProject?.status, activeProject?.video_job?.status, isAssembling, isRemotionRendering]);
 
   const handlePresetChange = (presetName: string) => {
     setStylePreset(presetName);
@@ -591,7 +609,7 @@ export default function StudioPage() {
     setIsUploadingClips(false);
   };
 
-  // Trigger Final Assembly (Step 5)
+  // Trigger Final Assembly (Step 5 - Fast FFmpeg Concat)
   const handleTriggerAssemble = async () => {
     if (!activeProject) return;
     setIsAssembling(true);
@@ -611,7 +629,6 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal memulai perakitan');
 
-      // Refresh project state
       await loadProjectDetail(activeProject.id);
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal memulai assembly');
@@ -619,9 +636,46 @@ export default function StudioPage() {
     }
   };
 
+  // Trigger Remotion 2.5D Rendering (Step 5 - Remotion Engine)
+  const handleTriggerRemotionRender = async () => {
+    if (!activeProject) return;
+    setIsRemotionRendering(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/api/render/remotion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activeProject.id,
+          bgm_preset: bgmPreset,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memulai render Remotion');
+
+      if (data.command) {
+        setRemotionCliCommand(data.command);
+      }
+
+      await loadProjectDetail(activeProject.id);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal memulai render Remotion');
+    } finally {
+      setIsRemotionRendering(false);
+    }
+  };
+
   const totalRequiredScenes = activeProject?.scenes?.length || sceneCount;
   const verifiedClipsCount = Object.keys(uploadedClips).length;
-  const isVideoJobActive = activeProject?.status === 'stitching' || (activeProject?.video_job?.status as string) === 'pending_assembly' || isAssembling;
+  const isVideoJobActive =
+    activeProject?.status === 'stitching' ||
+    activeProject?.status === 'rendering' ||
+    (activeProject?.video_job?.status as string) === 'pending_assembly' ||
+    (activeProject?.video_job?.status as string) === 'rendering' ||
+    isAssembling ||
+    isRemotionRendering;
   const isVideoJobComplete = activeProject?.status === 'completed' || !!activeProject?.video_url;
 
   return (
@@ -1738,6 +1792,115 @@ export default function StudioPage() {
             </button>
           </div>
 
+          {/* Render Engine Selector */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Pilih Render Engine Video</span>
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Pilih mesin kompilasi video akhir
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Option A: Remotion Engine */}
+              <div
+                onClick={() => setRenderEngine('remotion')}
+                className={`p-4 rounded-xl border cursor-pointer transition relative flex flex-col justify-between ${
+                  renderEngine === 'remotion'
+                    ? 'bg-gradient-to-br from-indigo-950/60 to-slate-900 border-indigo-500 ring-1 ring-indigo-500/50 shadow-lg shadow-indigo-500/10'
+                    : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-300 border border-indigo-500/40">
+                      <Sparkles className="w-3 h-3 text-indigo-400" />
+                      <span>RECOMMENDED • CINEMATIC 2.5D</span>
+                    </div>
+                    {renderEngine === 'remotion' && (
+                      <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">
+                      Mode Cinematic 2.5D (Remotion Engine)
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Animasi kedalaman 2.5D depth parallax, auto character cutout (rembg), kinetic gold pop captions, transisi dinamis, dan smart audio ducking.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 mt-3 pt-2 border-t border-indigo-500/20 text-[10px] text-indigo-300 font-mono">
+                  <span>• React + TypeScript Video Engine</span>
+                  <span>• Live In-Browser Preview</span>
+                </div>
+              </div>
+
+              {/* Option B: Fast FFmpeg Concat */}
+              <div
+                onClick={() => setRenderEngine('ffmpeg')}
+                className={`p-4 rounded-xl border cursor-pointer transition relative flex flex-col justify-between ${
+                  renderEngine === 'ffmpeg'
+                    ? 'bg-gradient-to-br from-emerald-950/60 to-slate-900 border-emerald-500 ring-1 ring-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                    : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-300 border border-emerald-500/40">
+                      <Zap className="w-3 h-3 text-emerald-400" />
+                      <span>FAST • ZERO-RENDER STITCH</span>
+                    </div>
+                    {renderEngine === 'ffmpeg' && (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">
+                      Mode Fast (FFmpeg Concat)
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Stream copy dan stitch langsung klip video hasil render Meta AI / panel statis Ken Burns, audio Edge-TTS, dan subtitle .ass standar.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 mt-3 pt-2 border-t border-emerald-500/20 text-[10px] text-emerald-300 font-mono">
+                  <span>• Direct FFmpeg Binary</span>
+                  <span>• Fast Assembly Execution</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Live Remotion 2.5D Real-Time Canvas Preview */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Film className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Real-Time Studio Canvas Preview
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-[10px] text-indigo-300 font-semibold">
+                  Zero-Export Instant Playback
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Uji coba visual, animasi teks, dan audio sebelum merender MP4 final
+              </span>
+            </div>
+
+            <RemotionPreviewPlayer
+              projectTitle={activeProject?.title || projectTitle}
+              scenes={activeProject?.scenes || []}
+              uploadedClips={uploadedClips}
+              bgmPreset={bgmPreset}
+              bgmVolume={0.25}
+            />
+          </div>
+
           {/* Area Dropzone Media (Gambar untuk Mode B, Video untuk Mode A) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
@@ -1824,48 +1987,106 @@ export default function StudioPage() {
 
             {/* Kolom Kanan: Tombol Utama & Instruksi Assemble */}
             <div className="space-y-4">
-              <div className="p-5 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-900 border border-indigo-500/30 space-y-4 shadow-xl">
+              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
+                renderEngine === 'remotion'
+                  ? 'bg-gradient-to-b from-indigo-950/50 to-slate-900 border-indigo-500/40'
+                  : 'bg-gradient-to-b from-emerald-950/40 to-slate-900 border-emerald-500/30'
+              }`}>
                 <div>
+                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-semibold text-slate-300 mb-2">
+                    <span>Engine Aktif: {renderEngine === 'remotion' ? 'Remotion 2.5D' : 'FFmpeg Concat'}</span>
+                  </div>
                   <h3 className="text-sm font-bold text-white">
-                    {productionMode === 'classic_2d' ? 'Eksekusi Perakitan 2D Manhwa' : 'Eksekusi Final Studio'}
+                    {renderEngine === 'remotion'
+                      ? 'Render Episode Cinematic 2.5D'
+                      : productionMode === 'classic_2d'
+                      ? 'Eksekusi Perakitan 2D Manhwa'
+                      : 'Eksekusi Final Studio'}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    {productionMode === 'classic_2d'
+                    {renderEngine === 'remotion'
+                      ? 'Menjalankan Remotion Headless Renderer, membuat cutout karakter (rembg), merender parallax multi-layer, kinetic gold captions, dan mengunggah ke Supabase CDN.'
+                      : productionMode === 'classic_2d'
                       ? 'Menggabungkan panel gambar statis dengan pergerakan kamera Ken Burns lembut, narasi vokal Edge-TTS, subtitle karaoke dinamis (.ass), SFX whoosh transisi komik, dan BGM sinematik.'
                       : 'Menyatukan video klip Meta AI, suara Edge-TTS, subtitle karaoke dinamis (.ass), SFX transisi, dan mixing BGM 3-fase.'}
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleTriggerAssemble}
-                  disabled={isVideoJobActive}
-                  className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:opacity-95 text-sm font-black text-slate-950 shadow-xl shadow-emerald-500/20 transition disabled:opacity-50 cursor-pointer"
-                >
-                  {isVideoJobActive ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
-                      <span>Sedang Merakit Final Episode...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Clapperboard className="w-4 h-4 text-slate-950" />
-                      <span>
-                        {productionMode === 'classic_2d' ? 'Assemble 2D Manhwa Episode' : 'Assemble Final Episode'}
-                      </span>
-                    </>
-                  )}
-                </button>
+                {renderEngine === 'remotion' ? (
+                  <button
+                    type="button"
+                    onClick={handleTriggerRemotionRender}
+                    disabled={isVideoJobActive}
+                    className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:opacity-95 text-sm font-black text-white shadow-xl shadow-indigo-500/25 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {isVideoJobActive ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Sedang Merender Remotion 2.5D...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-white" />
+                        <span>Render 2.5D Remotion Episode</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleTriggerAssemble}
+                    disabled={isVideoJobActive}
+                    className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:opacity-95 text-sm font-black text-slate-950 shadow-xl shadow-emerald-500/20 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {isVideoJobActive ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                        <span>Sedang Merakit Final Episode...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clapperboard className="w-4 h-4 text-slate-950" />
+                        <span>
+                          {productionMode === 'classic_2d' ? 'Assemble 2D Manhwa Episode' : 'Assemble Final Episode'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
 
                 {/* Local Terminal Hint */}
-                <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-2">
                   <div className="flex items-center space-x-1.5 text-slate-300 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Perintah Worker Lokal:</span>
+                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    <span>Perintah CLI Lokal:</span>
                   </div>
-                  <code className="block p-2 rounded bg-black/80 font-mono text-[10px] text-emerald-300 border border-slate-800 select-all">
-                    run_auto_ingest.bat
-                  </code>
+                  <div className="flex items-center space-x-1">
+                    <code className="flex-1 p-2 rounded bg-black/80 font-mono text-[10px] text-indigo-300 border border-slate-800 select-all truncate">
+                      {renderEngine === 'remotion'
+                        ? `python backend/remotion_renderer.py --project-id ${activeProject?.id || 'PROJECT_ID'}`
+                        : 'run_auto_ingest.bat'}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cmd =
+                          renderEngine === 'remotion'
+                            ? `python backend/remotion_renderer.py --project-id ${activeProject?.id || 'PROJECT_ID'}`
+                            : 'run_auto_ingest.bat';
+                        navigator.clipboard.writeText(cmd);
+                        setCopiedType('cli_cmd');
+                        setTimeout(() => setCopiedType(null), 2000);
+                      }}
+                      className="p-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                      title="Salin perintah CLI"
+                    >
+                      {copiedType === 'cli_cmd' ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
