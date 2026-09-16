@@ -298,7 +298,8 @@ async def process_scene(scene):
         duration, word_events = await tts_engine.synthesize_voice(
             narration,
             audio_path,
-            return_timestamps=True
+            return_timestamps=True,
+            engine=os.getenv("VOICE_ENGINE", config.DEFAULT_VOICE_ENGINE)
         )
         print(f"   Audio generated ({duration:.2f}s, {len(word_events)} words): {audio_path}")
 

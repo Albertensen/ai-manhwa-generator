@@ -35,7 +35,8 @@ import {
   UserCheck,
   Users,
   Plus,
-  Zap
+  Zap,
+  Mic
 } from 'lucide-react';
 import { ManhwaProject, ManhwaScene, ManhwaCharacter } from '@/lib/types';
 import dynamic from 'next/dynamic';
@@ -107,6 +108,8 @@ export default function StudioPage() {
   const [isUploadingClips, setIsUploadingClips] = useState<boolean>(false);
   const [isAssembling, setIsAssembling] = useState<boolean>(false);
   const [renderEngine, setRenderEngine] = useState<'remotion' | 'ffmpeg'>('remotion');
+  const [voiceEngine, setVoiceEngine] = useState<'edge_tts' | 'voxcpm'>('edge_tts');
+  const [voiceEmotion, setVoiceEmotion] = useState<'dramatic' | 'intense' | 'calm' | 'whisper' | 'angry'>('dramatic');
   const [isRemotionRendering, setIsRemotionRendering] = useState<boolean>(false);
   const [remotionCliCommand, setRemotionCliCommand] = useState<string | null>(null);
   const mediaFileInputRef = useRef<HTMLInputElement>(null);
@@ -943,7 +946,7 @@ export default function StudioPage() {
               subtitle: productionMode === 'classic_2d' ? 'Transisi Komik (Skip Meta)' : 'Batch Meta AI', 
               icon: Film 
             },
-            { step: 4, title: 'BGM & Narasi', subtitle: 'Edge-TTS Sound', icon: Music },
+            { step: 4, title: 'BGM & Narasi', subtitle: 'Audio & Voice Engine', icon: Music },
             { step: 5, title: 'Final Assembly', subtitle: productionMode === 'classic_2d' ? 'Stitch Panel 2D' : 'Stitch Video MP4', icon: Clapperboard },
           ].map((item) => {
             const Icon = item.icon;
@@ -1697,14 +1700,165 @@ export default function StudioPage() {
             ))}
           </div>
 
-          {/* Preview Narasi Suara Edge-TTS per Adegan */}
+          {/* Voice Synthesis Engine Selector */}
+          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-2">
+                <Mic className="w-4 h-4 text-purple-400" />
+                <span>Voiceover Synthesis Engine (Indonesian AI Narration)</span>
+              </div>
+              <span className="text-[11px] text-slate-400">Pilih mesin vokal untuk narasi cerita dan penjajaran karaoke kata</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Option A: Edge-TTS */}
+              <div
+                onClick={() => setVoiceEngine('edge_tts')}
+                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
+                  voiceEngine === 'edge_tts'
+                    ? 'bg-indigo-950/40 border-indigo-500/80 shadow-lg shadow-indigo-500/10'
+                    : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-400 font-mono tracking-wider">FAST • ZERO-COMPUTE</span>
+                    {voiceEngine === 'edge_tts' && (
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-400 border border-indigo-500/30">
+                        AKTIF
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-2 flex items-center space-x-2">
+                    <span>Edge-TTS (id-ID-ArdiNeural)</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Sintesis instan tanpa beban komputasi lokal. Suara narator pria dramatis berbahasa Indonesia dengan timing WordBoundary native.
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span>Latency: ~0.8s</span>
+                  <span className="text-emerald-400">Zero GPU Usage</span>
+                </div>
+              </div>
+
+              {/* Option B: VoxCPM Neural Actor */}
+              <div
+                onClick={() => setVoiceEngine('voxcpm')}
+                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
+                  voiceEngine === 'voxcpm'
+                    ? 'bg-purple-950/40 border-purple-500/80 shadow-lg shadow-purple-500/10'
+                    : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-purple-400 font-mono tracking-wider">48kHz • HIGH-EMOTION</span>
+                    {voiceEngine === 'voxcpm' && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] font-bold text-purple-400 border border-purple-500/30">
+                        AKTIF
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-bold text-white mt-2 flex items-center space-x-2">
+                    <span>VoxCPM Neural Actor</span>
+                    <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono">RTX 3060 Ti</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Model difusi vokal ekspresif beresolusi tinggi (48kHz) dengan kontrol prosodi emosi &amp; penjajaran kata otomatis faster-whisper.
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span className="text-emerald-400">● Checkpoint Ready</span>
+                  <span className="text-purple-300">Auto-Fallback to Edge-TTS</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Emotion Selector when VoxCPM is selected */}
+            {voiceEngine === 'voxcpm' && (
+              <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-900/40 space-y-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-purple-200">
+                    Pilih Emosi &amp; Gaya Akting Suara VoxCPM:
+                  </span>
+                  <span className="text-[11px] font-mono text-purple-400">
+                    Mode: {voiceEmotion.toUpperCase()}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {[
+                    { id: 'dramatic', label: 'Dramatic', desc: 'Epik & Megah' },
+                    { id: 'intense', label: 'Intense', desc: 'Tegang & Cepat' },
+                    { id: 'calm', label: 'Calm', desc: 'Misterius & Tenang' },
+                    { id: 'whisper', label: 'Whisper', desc: 'Bisikan Horor' },
+                    { id: 'angry', label: 'Angry', desc: 'Amarah Demon' }
+                  ].map((emo) => (
+                    <button
+                      key={emo.id}
+                      type="button"
+                      onClick={() => setVoiceEmotion(emo.id as any)}
+                      className={`px-3 py-2 rounded-lg border text-left transition ${
+                        voiceEmotion === emo.id
+                          ? 'bg-purple-600/30 border-purple-500 text-white font-bold'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-medium capitalize">{emo.label}</div>
+                      <div className="text-[10px] text-slate-400">{emo.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CLI Command Helper for Batch Voiceover */}
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center space-x-2 text-slate-400 font-mono text-[11px] truncate">
+                <span className="text-amber-400">$</span>
+                <span className="text-slate-300 truncate">
+                  python backend/generate_audio.py --project-id {activeProject?.id || '<PROJECT_ID>'} --engine {voiceEngine} {voiceEngine === 'voxcpm' ? `--emotion ${voiceEmotion}` : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(
+                  `python backend/generate_audio.py --project-id ${activeProject?.id || '<PROJECT_ID>'} --engine ${voiceEngine}${voiceEngine === 'voxcpm' ? ` --emotion ${voiceEmotion}` : ''}`,
+                  'voice_cli'
+                )}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-300 transition shrink-0"
+              >
+                {copiedType === 'voice_cli' ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Tersalin</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy CLI</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Preview Narasi Suara per Adegan */}
           <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-2">
                 <Volume2 className="w-4 h-4 text-indigo-400" />
-                <span>Preview Narasi Suara Edge-TTS Bahasa Indonesia</span>
+                <span>
+                  {voiceEngine === 'voxcpm'
+                    ? `Preview Narasi Suara VoxCPM Neural Actor (${voiceEmotion.toUpperCase()})`
+                    : 'Preview Narasi Suara Edge-TTS Bahasa Indonesia'}
+                </span>
               </div>
-              <span className="text-[11px] text-slate-400">Suara: id-ID-ArdiNeural (Dramatic Narration)</span>
+              <span className="text-[11px] text-slate-400">
+                {voiceEngine === 'voxcpm'
+                  ? 'Model: openbmb/VoxCPM2 (48kHz Hi-Fi + Whisper Base)'
+                  : 'Suara: id-ID-ArdiNeural (Dramatic Narration)'}
+              </span>
             </div>
 
             <div className="space-y-2.5">

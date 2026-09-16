@@ -35,6 +35,8 @@ FFMPEG_BIN = r"C:\Users\Administrator\prime-agent\ffmpeg_bin\ffmpeg.exe"
 if not os.path.exists(FFMPEG_BIN):
     FFMPEG_BIN = "ffmpeg"
 
-# TTS
+# TTS & Voice Engine
 DEFAULT_VOICE_MALE = "id-ID-ArdiNeural"
 DEFAULT_VOICE_FEMALE = "id-ID-GadisNeural"
+DEFAULT_VOICE_ENGINE = os.getenv("VOICE_ENGINE", "edge_tts")  # "edge_tts" | "voxcpm"
+VOXCPM_MODEL_ID = "openbmb/VoxCPM2"

@@ -7,18 +7,47 @@ try:
 except (ImportError, ValueError):
     import config
 
-async def synthesize_voice(text, output_file, voice=config.DEFAULT_VOICE_MALE, return_timestamps=False):
+async def synthesize_voice(
+    text,
+    output_file,
+    voice=config.DEFAULT_VOICE_MALE,
+    return_timestamps=False,
+    engine="edge_tts",
+    reference_audio=None,
+    emotion="dramatic"
+):
     """
-    Generates high-quality speech with edge-tts.
-    If return_timestamps is True, captures word-level boundaries directly from
-    Edge-TTS stream (boundary='WordBoundary') with zero extra compute overhead.
+    Generates high-quality speech.
+    Supports two engines:
+      - 'edge_tts': Fast, cloud-based Edge-TTS (id-ID-ArdiNeural) with native WordBoundary events.
+      - 'voxcpm': High-Emotion 48kHz VoxCPM2 Neural Actor with faster-whisper alignment and auto-fallback.
+    
     Returns:
         duration (float) if return_timestamps is False
         (duration, word_events) (tuple) if return_timestamps is True
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    if engine == "voxcpm":
+        try:
+            try:
+                from . import voxcpm_client
+            except (ImportError, ValueError):
+                import voxcpm_client
+            
+            res = voxcpm_client.synthesize_speech(
+                text=text,
+                output_file=output_file,
+                reference_audio_path=reference_audio,
+                emotion=emotion,
+                return_timestamps=return_timestamps
+            )
+            return res
+        except Exception as e:
+            print(f"[tts_engine] VoxCPM execution error ({e}). Falling back to Edge-TTS...")
+
+    # Edge-TTS pipeline
     communicate = edge_tts.Communicate(text, voice, boundary="WordBoundary")
-    
     word_events = []
     with open(output_file, "wb") as f:
         async for chunk in communicate.stream():
@@ -49,7 +78,6 @@ def get_audio_duration(file_path):
             "-f", "null", "-"
         ]
         res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        # Parse Duration: 00:00:04.50
         for line in res.stderr.splitlines():
             if "Duration:" in line:
                 part = line.split("Duration:")[1].split(",")[0].strip()

@@ -400,7 +400,8 @@ async def finalize_project(project: dict):
                 text=narration,
                 output_file=str(audio_path),
                 voice=config.DEFAULT_VOICE_MALE,
-                return_timestamps=True
+                return_timestamps=True,
+                engine=os.getenv("VOICE_ENGINE", config.DEFAULT_VOICE_ENGINE)
             )
             dur = max(dur, 3.0)
         except Exception as e:
