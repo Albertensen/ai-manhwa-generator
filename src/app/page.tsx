@@ -1,2298 +1,1124 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  Lock, 
-  Unlock,
-  Play, 
-  Film, 
-  Volume2, 
-  Image as ImageIcon, 
-  RefreshCw, 
-  Layers, 
-  Clapperboard, 
-  CheckCircle2, 
-  AlertCircle,
-  Clock,
-  Trash2,
-  Music,
-  RotateCcw,
+import {
+  Layout,
+  FileText,
+  Film,
+  Download,
+  Sliders,
+  Sparkles,
+  Volume2,
+  Mic,
   Copy,
   Check,
-  Download,
-  FileText,
-  Upload,
+  Plus,
+  Trash2,
+  RotateCcw,
   ArrowRight,
   ArrowLeft,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
+  ExternalLink,
+  Play,
+  Settings,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
   Eye,
-  Sliders,
-  ShieldCheck,
-  Video,
+  X,
+  RefreshCw,
+  Image as ImageIcon,
   UserCheck,
-  Users,
-  Plus,
-  Zap,
-  Mic
+  Music
 } from 'lucide-react';
-import { ManhwaProject, ManhwaScene, ManhwaCharacter } from '@/lib/types';
 import dynamic from 'next/dynamic';
+import { ManhwaProject, ManhwaScene, ManhwaCharacter } from '@/lib/types';
+import {
+  MangaPageData,
+  MangaPanelData,
+  SpeechBubbleData,
+  ComicLayoutType
+} from '@/lib/manga-types';
+import { generateLayoutPanels } from '@/components/manga/ComicEditorCanvas';
+
+// Dynamic imports for browser-only canvas and video players
+const ComicEditorCanvas = dynamic(
+  () => import('@/components/manga/ComicEditorCanvas'),
+  { ssr: false }
+);
 
 const RemotionPreviewPlayer = dynamic(
   () => import('@/components/RemotionPreviewPlayer'),
   { ssr: false }
 );
 
-interface WizardCharacter {
-  id: string;
-  name: string;
-  role: 'protagonist' | 'heroine' | 'antagonist' | 'supporting' | 'mentor';
-  appearance_locked_prompt: string;
-  reference_image_url?: string | null;
-  is_locked: boolean;
-}
+type MangaStudioTab = 'script_engine' | 'canvas_editor' | 'export_recap';
 
-export default function StudioPage() {
-  // Wizard Navigation: Step 1 to Step 5
-  const [currentStep, setCurrentStep] = useState<number>(1);
-  const [showStorySetup, setShowStorySetup] = useState<boolean>(true);
+export default function MangaFlowStudio() {
+  // ---------------------------------------------------------------------------
+  // Top Level Navigation
+  // ---------------------------------------------------------------------------
+  const [activeTab, setActiveTab] = useState<MangaStudioTab>('canvas_editor');
+  const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState<boolean>(false);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Production Mode: Mode A (Full-Motion Meta AI) vs Mode B (Classic 2D Zero-Motion / Fast)
-  const [productionMode, setProductionMode] = useState<'full_motion' | 'classic_2d'>('full_motion');
-
-  // Global Story Setup State
-  const [projectTitle, setProjectTitle] = useState('Kebangkitan Sang Penguasa Bayangan');
-  const [stylePreset, setStylePreset] = useState('Solo Leveling / Dark Fantasy');
-  const [bgmPreset, setBgmPreset] = useState<'epic_battle' | 'mystery_dungeon' | 'melancholy_sad'>('epic_battle');
-  const [storyIdea, setStoryIdea] = useState(
-    'Setelah 10 tahun terjebak di dungeon peringkat terendah, sebuah jendela sistem misterius muncul di hadapannya. Peringkatnya melonjak dari E-rank menjadi Penguasa Bayangan, dan monster bos pertama tunduk di bawah kakinya.'
+  // ---------------------------------------------------------------------------
+  // Project & Story Script State (Tab 1)
+  // ---------------------------------------------------------------------------
+  const [projects, setProjects] = useState<ManhwaProject[]>([]);
+  const [activeProject, setActiveProject] = useState<ManhwaProject | null>(null);
+  const [storyTitle, setStoryTitle] = useState<string>('Shadow Sovereign: Bangkitnya Pemburu Bayangan');
+  const [genre, setGenre] = useState<string>('Action Fantasy (Solo Leveling Style)');
+  const [artStyle, setArtStyle] = useState<string>('Solo Leveling / Dark Fantasy');
+  const [storySynopsis, setStorySynopsis] = useState<string>(
+    'Kaelen, pemburu peringkat E terlemah, terperangkap di ruang terdalam dungeon ganda kuil Cartenon. Saat rekan-rekannya meninggalkannya menghadapi patung dewa raksasa, dia menerima quest rahasia misterius: [Pemberian Takhta Shadow Monarch]. Darah hitam mengalir dari bilahnya saat dia bangkit menolak kematian.'
   );
-  const [sceneCount, setSceneCount] = useState<number>(5);
+  const [isGeneratingScript, setIsGeneratingScript] = useState<boolean>(false);
 
-  // Multi-Character State (Step 1)
-  const [characterList, setCharacterList] = useState<WizardCharacter[]>([
+  // Multi-Character Master Sheet
+  const [characters, setCharacters] = useState<Array<{
+    id: string;
+    name: string;
+    role: 'protagonist' | 'heroine' | 'antagonist' | 'supporting';
+    appearance_locked_prompt: string;
+    reference_image_url?: string | null;
+  }>>([
     {
-      id: 'char_mc',
-      name: 'Kang Min-Woo',
+      id: 'char_protagonist',
+      name: 'Kaelen Vance',
       role: 'protagonist',
-      appearance_locked_prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, athletic silhouette, black hooded long coat with glowing purple mana aura, high contrast manhwa art style, sharp lineart, 8k masterpiece',
+      appearance_locked_prompt: '1man, solo, messy black parted hair, piercing glowing electric blue eyes, sharp jawline, black trench coat with high collar, dark purple shadow aura swirling around hands, athletic muscular build, solo leveling webtoon art style, dramatic rim lighting, 8k masterpiece',
       reference_image_url: null,
-      is_locked: true,
     },
     {
       id: 'char_heroine',
-      name: 'Seraphina',
+      name: 'Seraphina Frost',
       role: 'heroine',
-      appearance_locked_prompt: '1girl, solo, long silver ponytail, piercing emerald green eyes, elegant white and gold holy knight armor, glowing holy sword, slender athletic build, beautiful webtoon heroine face, 8k masterpiece',
+      appearance_locked_prompt: '1girl, solo, long silver ponytail, piercing emerald green eyes, elegant white and gold holy knight armor, glowing holy sword, slender athletic build, beautiful webtoon heroine face, solo leveling art style, 8k',
       reference_image_url: null,
-      is_locked: true,
     },
     {
-      id: 'char_villain',
+      id: 'char_antagonist',
       name: 'Demon King Malakor',
       role: 'antagonist',
-      appearance_locked_prompt: '1demon lord, solo, massive muscular frame, obsidian spiked heavy plate armor, glowing blood-red eyes, curved demonic horns, crackling crimson dark lightning aura, terrifying aura, 8k',
+      appearance_locked_prompt: '1demon lord, massive obsidian heavy plate armor, glowing blood-red eyes, curved demonic horns, crackling crimson dark lightning aura, towering menacing presence, high fantasy webtoon art, 8k',
       reference_image_url: null,
-      is_locked: true,
-    }
+    },
   ]);
   const [activeCharIndex, setActiveCharIndex] = useState<number>(0);
-  const [isUploadingChar, setIsUploadingChar] = useState<boolean>(false);
-  const charFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Assembly & Media Drop State (Step 5)
-  const [uploadedClips, setUploadedClips] = useState<Record<number, string>>({});
-  const [isUploadingClips, setIsUploadingClips] = useState<boolean>(false);
-  const [isAssembling, setIsAssembling] = useState<boolean>(false);
+  // ---------------------------------------------------------------------------
+  // Interactive Comic Canvas State (Tab 2)
+  // ---------------------------------------------------------------------------
+  const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
+  const [pages, setPages] = useState<MangaPageData[]>([
+    {
+      id: 'page_1',
+      pageNumber: 1,
+      title: 'Halaman 1: Kebangkitan Bayangan',
+      layout: 'webtoon',
+      canvasWidth: 720,
+      canvasHeight: 1080,
+      gutterSize: 12,
+      backgroundColor: '#0f172a',
+      panels: generateLayoutPanels('webtoon', 720, 1080, 12),
+      bubbles: [
+        {
+          id: 'b1',
+          type: 'oval',
+          x: 48,
+          y: 60,
+          width: 200,
+          height: 80,
+          tailX: 40,
+          tailY: 100,
+          text: 'Di reruntuhan labirin kuno ini... aku tidak akan mati sia-sia.',
+          speaker: 'Kaelen',
+          fontSize: 12,
+          textColor: '#0f172a',
+          bgColor: '#ffffff',
+          borderColor: '#000000',
+        },
+        {
+          id: 'b2',
+          type: 'thought',
+          x: 460,
+          y: 420,
+          width: 210,
+          height: 85,
+          tailX: 180,
+          tailY: 110,
+          text: 'Aura hitam ini... apakah ini kekuatan raja terdahulu?',
+          speaker: 'Kaelen',
+          fontSize: 12,
+          textColor: '#0f172a',
+          bgColor: '#ffffff',
+          borderColor: '#000000',
+        },
+        {
+          id: 'b3',
+          type: 'shout',
+          x: 240,
+          y: 780,
+          width: 230,
+          height: 90,
+          tailX: 115,
+          tailY: 115,
+          text: 'BANGKITLAH, TENTARA BAYANGAN!!',
+          speaker: 'Kaelen',
+          fontSize: 13,
+          textColor: '#0f172a',
+          bgColor: '#ffffff',
+          borderColor: '#e11d48',
+        },
+      ],
+      sfxStickers: [
+        {
+          id: 'sfx_1',
+          text: 'DUMMM!',
+          x: 280,
+          y: 720,
+          rotation: -8,
+          fontSize: 42,
+          color: '#f59e0b',
+          strokeColor: '#000000',
+          stylePreset: 'impact',
+        },
+      ],
+    },
+    {
+      id: 'page_2',
+      pageNumber: 2,
+      title: 'Halaman 2: Benturan Pertama',
+      layout: 'action',
+      canvasWidth: 720,
+      canvasHeight: 1080,
+      gutterSize: 12,
+      backgroundColor: '#0f172a',
+      panels: generateLayoutPanels('action', 720, 1080, 12),
+      bubbles: [
+        {
+          id: 'b4',
+          type: 'oval',
+          x: 60,
+          y: 60,
+          width: 210,
+          height: 80,
+          tailX: 40,
+          tailY: 100,
+          text: 'Seraphina, mundur ke belakangku sekarang!',
+          speaker: 'Kaelen',
+          fontSize: 12,
+          textColor: '#0f172a',
+          bgColor: '#ffffff',
+          borderColor: '#000000',
+        },
+        {
+          id: 'b5',
+          type: 'shout',
+          x: 420,
+          y: 400,
+          width: 220,
+          height: 90,
+          tailX: 110,
+          tailY: 115,
+          text: 'MATI KAU SERANGGA!',
+          speaker: 'Demon Lord',
+          fontSize: 13,
+          textColor: '#0f172a',
+          bgColor: '#ffffff',
+          borderColor: '#e11d48',
+        },
+      ],
+      sfxStickers: [
+        {
+          id: 'sfx_2',
+          text: 'SLASH!!',
+          x: 180,
+          y: 420,
+          rotation: 12,
+          fontSize: 38,
+          color: '#e11d48',
+          strokeColor: '#000000',
+          stylePreset: 'slash',
+        },
+      ],
+    },
+  ]);
+
+  const activePage = pages[currentPageIndex] || pages[0];
+
+  const handleUpdateActivePage = (updated: MangaPageData) => {
+    const next = [...pages];
+    next[currentPageIndex] = updated;
+    setPages(next);
+  };
+
+  const handleAddNewPage = () => {
+    const nextNum = pages.length + 1;
+    const newPage: MangaPageData = {
+      id: `page_${Date.now()}`,
+      pageNumber: nextNum,
+      title: `Halaman ${nextNum}`,
+      layout: 'webtoon',
+      canvasWidth: 720,
+      canvasHeight: 1080,
+      gutterSize: 12,
+      backgroundColor: '#0f172a',
+      panels: generateLayoutPanels('webtoon', 720, 1080, 12),
+      bubbles: [],
+      sfxStickers: [],
+    };
+    setPages([...pages, newPage]);
+    setCurrentPageIndex(pages.length);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Export & Motion Recap State (Tab 3)
+  // ---------------------------------------------------------------------------
   const [renderEngine, setRenderEngine] = useState<'remotion' | 'ffmpeg'>('remotion');
   const [voiceEngine, setVoiceEngine] = useState<'edge_tts' | 'voxcpm'>('edge_tts');
   const [voiceEmotion, setVoiceEmotion] = useState<'dramatic' | 'intense' | 'calm' | 'whisper' | 'angry'>('dramatic');
+  const [bgmPreset, setBgmPreset] = useState<'epic_battle' | 'mystery_dungeon' | 'melancholy_sad'>('epic_battle');
   const [isRemotionRendering, setIsRemotionRendering] = useState<boolean>(false);
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
   const [remotionCliCommand, setRemotionCliCommand] = useState<string | null>(null);
-  const mediaFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Projects & App State
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [projects, setProjects] = useState<ManhwaProject[]>([]);
-  const [activeProject, setActiveProject] = useState<ManhwaProject | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [copiedType, setCopiedType] = useState<string | null>(null);
-  const [showRawDrawer, setShowRawDrawer] = useState<boolean>(false);
-
-  // Style Presets Mapping
-  const stylePresets: Record<string, { prompt: string; desc: string; defaultBgm: 'epic_battle' | 'mystery_dungeon' | 'melancholy_sad' }> = {
-    'Solo Leveling / Dark Fantasy': {
-      prompt: '1man, solo, messy black parted hair, glowing electric blue eyes, sharp jawline, black long coat, dark purple shadow aura, solo leveling art style, dramatic rim lighting, 8k',
-      desc: 'Dark shadows, glowing blue/purple aura, intense sharp eyes',
-      defaultBgm: 'epic_battle'
-    },
-    'Omniscient Reader / Modern Hunter': {
-      prompt: '1man, solo, neat dark hair, determined obsidian eyes, white trench coat over formal dark suit, modern seoul apocalypse background, webtoon clean lineart, vibrant colors',
-      desc: 'White trenchcoat, modern apocalypse hunter, clean manhwa colors',
-      defaultBgm: 'epic_battle'
-    },
-    'Murim / Heavenly Demon Cultivation': {
-      prompt: '1man, solo, long flowing jet-black hair tied in topknot, crimson glowing eyes, ornate martial arts robes with silver dragon embroidery, floating martial aura, ancient pagoda ruins',
-      desc: 'Traditional martial robes, flowing hair, ancient murim aesthetic',
-      defaultBgm: 'mystery_dungeon'
-    },
-    'Magic Emperor / Demonic Sovereign': {
-      prompt: '1man, solo, silver styled hair, piercing amethyst purple eyes, dark imperial robes with golden cloud patterns, crackling dark purple lightning, arrogant smirk, high tension manhwa art',
-      desc: 'Silver hair, imperial cultivation robes, demonic lightning aura',
-      defaultBgm: 'epic_battle'
-    },
-    'Villainess / Imperial Noblesse': {
-      prompt: '1girl, solo, long wavy platinum blonde hair, piercing amethyst violet eyes, opulent emerald embroidered royal gown, gold jewelry, grand baroque palace ballroom, soft dramatic glow',
-      desc: 'Royal elegance, opulent palace background, lavish webtoon romance',
-      defaultBgm: 'melancholy_sad'
-    }
+  // Copy helper
+  const copyToClipboard = (text: string, type: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedType(type);
+    setTimeout(() => setCopiedType(null), 2500);
   };
 
-  const bgmOptions = [
-    { 
-      id: 'epic_battle', 
-      label: 'Epic Battle (Solo Leveling)', 
-      desc: 'Orchestral choir, heavy brass, aggressive percussion synth', 
-      icon: '⚔️',
-      aiMusicPrompt: 'Epic orchestral battle theme, heavy synth bass, intense choir chants, aggressive war drums, cinematic anime crescendo, 140 bpm'
-    },
-    { 
-      id: 'mystery_dungeon', 
-      label: 'Mystery Dungeon (Suspense)', 
-      desc: 'Dark ambient drones, dissonant strings, low sub-bass echoes', 
-      icon: '🔮',
-      aiMusicPrompt: 'Dark ambient dungeon exploration soundtrack, eerie cello drone, low sub bass, reverberant cave echoes, tense atmosphere, 90 bpm'
-    },
-    { 
-      id: 'melancholy_sad', 
-      label: 'Melancholy & Tragic', 
-      desc: 'Solo emotional piano, weeping cello, soft rain ambience', 
-      icon: '🥀',
-      aiMusicPrompt: 'Emotional sorrowful anime soundtrack, solo piano melody, gentle cello harmony, soft distant rain, heartfelt sadness, 75 bpm'
-    }
-  ];
+  // Convert current comic page panels to Remotion recap scenes
+  const remotionScenes = activePage.panels.map((p, idx) => ({
+    id: p.id,
+    scene_order: idx + 1,
+    imageUrl: p.imageUrl || null,
+    narration_text: p.dialogue || p.visualPrompt,
+    dialogue_text: p.dialogue,
+    camera_motion: idx % 2 === 0 ? 'zoom_in' : 'pan_right',
+    duration_seconds: 4.5,
+    audioUrl: p.audioUrl || null,
+  }));
 
-  const currentChar = characterList[activeCharIndex] || characterList[0];
-
-  // Helper functions for Step 1: Character Variations per selected character
-  const getCharacterVariations = (char: WizardCharacter) => {
-    const isFemale = char.role === 'heroine' || char.appearance_locked_prompt.includes('1girl');
-    const isVillain = char.role === 'antagonist';
-
-    if (isVillain) {
-      return [
-        {
-          id: `${char.id}_var1`,
-          title: 'Variasi 1: Sovereign Boss Key Visual (Front View)',
-          badge: 'Boss Anchor',
-          desc: 'Sosok monster penguasa berdiri angkuh memancarkan aura kegelapan dan tatapan mengintimidasi.',
-          prompt: `masterpiece, solo portrait, front angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, menacing demonic grin, overwhelming dark Qi aura, heavy shadows, towering dark throne room, 8k resolution`,
-        },
-        {
-          id: `${char.id}_var2`,
-          title: 'Variasi 2: World-Ending Destruction Attack',
-          badge: 'Skill Kehancuran',
-          desc: 'Karakter melepaskan serangan magis dahsyat dengan partikel petir darah dan batu-batu melayang.',
-          prompt: `masterpiece, combat action shot, ${char.name}, ${char.appearance_locked_prompt}, unleashing cataclysmic dark magic sphere, shattered earth debris orbiting, crackling red lightning storms, dynamic perspective, unreal engine 5 render, 8k`,
-        },
-        {
-          id: `${char.id}_var3`,
-          title: 'Variasi 3: Terrifying Close-Up Gaze',
-          badge: 'Tatapan Monster',
-          desc: 'Fokus dekat pada mata merah membara dan ekspresi haus darah yang mematikan.',
-          prompt: `masterpiece, extreme close-up on face, ${char.name}, ${char.appearance_locked_prompt}, glowing predatory blood-red eyes, sharp fangs, dark smoke billowing from lips, dramatic low angle lighting, 8k ultra-detailed`,
-        },
-      ];
-    }
-
-    if (isFemale) {
-      return [
-        {
-          id: `${char.id}_var1`,
-          title: 'Variasi 1: Noble Key Visual (Front 3/4)',
-          badge: 'Heroine Anchor',
-          desc: 'Pose anggun khas karakter utama wanita dengan gaun atau zirah berkilau di bawah pencahayaan lembut.',
-          prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, exquisite facial features, expressive eyes, glowing holy particles drifting, elegant composition, 8k resolution`,
-        },
-        {
-          id: `${char.id}_var2`,
-          title: 'Variasi 2: Resolute Combat Stance / Awakening',
-          badge: 'Mode Bertarung',
-          desc: 'Pose siaga memegang senjata dengan aura suci berkilau dan rambut berkibar ditiup angin kencang.',
-          prompt: `masterpiece, combat stance, ${char.name}, ${char.appearance_locked_prompt}, holding radiant glowing weapon, divine energy ribbons floating, dynamic wind blown hair, dark ruined background with bright volumetric rays, 8k`,
-        },
-        {
-          id: `${char.id}_var3`,
-          title: 'Variasi 3: Emotional Tear / Determination Close-Up',
-          badge: 'Close-Up Emosional',
-          desc: 'Fokus dramatis pada tatapan penuh tekad dan detail pantulan cahaya di mata.',
-          prompt: `masterpiece, close-up on face, ${char.name}, ${char.appearance_locked_prompt}, glistening determined eyes, soft cinematic bokeh, dramatic soft rim light, trending on webtoon, masterpiece 8k`,
-        },
-      ];
-    }
-
-    // Default MC Protagonist
-    return [
-      {
-        id: `${char.id}_var1`,
-        title: 'Variasi 1: Masterpiece Key Visual (Front 3/4)',
-        badge: 'Rekomendasi MC',
-        desc: 'Pose standar key visual webtoon dengan tatapan tajam dan pencahayaan kontras tinggi untuk konsistensi wajah.',
-        prompt: `masterpiece, solo portrait, front 3/4 angle, Korean manhwa webtoon key visual, ${char.name}, ${char.appearance_locked_prompt}, clean lineart, expressive sharp eyes, high contrast rim lighting, dark studio atmospheric background, 8k resolution`,
-      },
-      {
-        id: `${char.id}_var2`,
-        title: 'Variasi 2: Awakened State & Surging Mana Aura',
-        badge: 'Mode Tempur MC',
-        desc: 'Karakter dikelilingi aura energi magis berkilau dengan efek partikel melayang untuk adegan aksi intens.',
-        prompt: `masterpiece, solo, combat battle stance, ${char.name}, ${char.appearance_locked_prompt}, surging glowing mana aura enveloping body, floating hair strands, crackling electricity embers, dark volumetric fog, dynamic manhwa angle, unreal engine 5 render, 8k`,
-      },
-      {
-        id: `${char.id}_var3`,
-        title: 'Variasi 3: Extreme Close-Up & Piercing Gaze',
-        badge: 'Close-Up Dramatis',
-        desc: 'Fokus ketat pada ekspresi wajah, detail mata bersinar tajam, dan bayangan dramatis untuk tensi tinggi.',
-        prompt: `masterpiece, extreme close-up on face, ${char.name}, ${char.appearance_locked_prompt}, razor sharp jawline, glowing piercing eyes with intricate iris details, dynamic wind blowing hair across forehead, dramatic shadow cast, 8k`,
-      },
-    ];
-  };
-
-  // Update current character in state
-  const updateCurrentChar = (patch: Partial<WizardCharacter>) => {
-    setCharacterList((prev) => {
-      const copy = [...prev];
-      copy[activeCharIndex] = { ...copy[activeCharIndex], ...patch };
-      return copy;
-    });
-  };
-
-  const handleAddNewCharacter = () => {
-    if (characterList.length >= 4) return;
-    const newIdx = characterList.length + 1;
-    const newChar: WizardCharacter = {
-      id: `char_${Date.now()}`,
-      name: `Karakter ${newIdx}`,
-      role: 'supporting',
-      appearance_locked_prompt: '1man, neat dark hair, brown eyes, adventurer leather armor, clean webtoon lineart, 8k',
-      reference_image_url: null,
-      is_locked: true,
-    };
-    setCharacterList([...characterList, newChar]);
-    setActiveCharIndex(characterList.length);
-  };
-
-  const handleRemoveCharacter = (index: number) => {
-    if (characterList.length <= 1) return;
-    const filtered = characterList.filter((_, i) => i !== index);
-    setCharacterList(filtered);
-    setActiveCharIndex(Math.max(0, index - 1));
-  };
-
-  // Helper functions for Step 2 & 3: Batch Exports
-  const getAutoflowVisualBatch = () => {
-    if (!activeProject?.scenes || activeProject.scenes.length === 0) return '';
-    const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
-    return sorted.map((s) => {
-      const cleanVisual = s.visual_prompt.replace(/[\r\n]+/g, ' ').trim();
-      return `Scene ${s.scene_order}: ${cleanVisual} | Style: ${stylePreset}, masterpiece manhwa webtoon style, high contrast, 8k resolution`;
-    }).join('\n');
-  };
-
-  const getMetaMotionPrompt = (scene: ManhwaScene) => {
-    const motion = scene.camera_motion || 'zoom_in';
-    const visual = (scene.visual_prompt || '').toLowerCase();
-    
-    if (motion === 'action' || visual.includes('slash') || visual.includes('attack') || visual.includes('strike') || visual.includes('clash')) {
-      return 'Dynamic explosive camera push forward, violent surging mana aura, lightning and sparks flying outward, intense anime action choreography, 3D parallax depth, high quality animation';
-    }
-    if (motion === 'zoom_in') {
-      return 'Cinematic slow push in on character, hair and clothes fluttering gently in the breeze, glowing mana embers drifting in dark atmosphere, 3D depth, smooth animation';
-    }
-    if (motion === 'zoom_out') {
-      return 'Epic slow pull-back camera zoom out revealing colossal dark dungeon surroundings, atmospheric fog and dust drifting, dramatic anime depth';
-    }
-    if (motion === 'pan_left') {
-      return 'Smooth horizontal tracking pan left across the scene, cinematic parallax layers, ambient particles floating, high detail animation';
-    }
-    if (motion === 'pan_right') {
-      return 'Smooth horizontal tracking pan right, dynamic parallax layers, glowing energy motes, sharp anime animation';
-    }
-    if (motion === 'tilt_up') {
-      return 'Dramatic towering vertical camera tilt up from ground to ceiling, soaring energy pillars, epic scale reveal, anime lighting';
-    }
-    return 'Cinematic subtle organic movement, gentle breathing, clothes fluttering slightly in the wind, soft glowing particle drift, anime 3D depth';
-  };
-
-  const getMetaMotionBatch = () => {
-    if (!activeProject?.scenes || activeProject.scenes.length === 0) return '';
-    const sorted = [...activeProject.scenes].sort((a, b) => a.scene_order - b.scene_order);
-    return sorted.map((s) => getMetaMotionPrompt(s)).join('\n');
-  };
-
-  const copyToClipboard = async (text: string, type: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedType(type);
-      setTimeout(() => setCopiedType(null), 2500);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
-  const downloadTextFile = (content: string, filename: string) => {
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadPackage = () => {
-    if (!activeProject) return;
-    const data = {
-      version: '2.0',
-      project_id: activeProject.id,
-      title: activeProject.title,
-      synopsis: activeProject.synopsis,
-      genre: activeProject.genre,
-      art_style: activeProject.art_style || stylePreset,
-      production_mode: productionMode,
-      bgm_preset: bgmPreset,
-      total_scenes: activeProject.scenes?.length || 0,
-      characters: characterList.map((c) => ({
-        name: c.name,
-        role: c.role,
-        appearance_locked_prompt: c.appearance_locked_prompt,
-        reference_image_url: c.reference_image_url || null,
-        is_locked: c.is_locked,
-      })),
-      scenes: (activeProject.scenes || []).map((s) => ({
-        scene_order: s.scene_order,
-        character_name: s.character_name,
-        narration_text: s.narration_text,
-        visual_prompt: s.visual_prompt,
-        camera_motion: s.camera_motion,
-        meta_motion_prompt: getMetaMotionPrompt(s),
-        voice_emotion: s.voice_emotion,
-        duration_seconds: s.duration_seconds || 4.5,
-      })),
-      exported_at: new Date().toISOString(),
-    };
-
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `manhwa_project_${activeProject.id.slice(0, 8)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Fetch projects list
-  const fetchProjects = async () => {
-    try {
-      setIsRefreshing(true);
-      const res = await fetch('/api/projects');
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data.projects || []);
-        if (data.projects && data.projects.length > 0 && !activeProject) {
-          loadProjectDetail(data.projects[0].id);
-        }
-      }
-    } catch (e: any) {
-      console.error(e);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // Fetch single project with scenes & characters
-  const loadProjectDetail = async (id: string) => {
-    try {
-      const res = await fetch(`/api/projects/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setActiveProject(data.project);
-        if (data.project.title) setProjectTitle(data.project.title);
-        if (data.project.synopsis) setStoryIdea(data.project.synopsis);
-        if (data.project.production_mode) setProductionMode(data.project.production_mode);
-
-        if (data.project.characters && data.project.characters.length > 0) {
-          const mappedChars: WizardCharacter[] = data.project.characters.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            role: c.role || 'protagonist',
-            appearance_locked_prompt: c.appearance_locked_prompt || '',
-            reference_image_url: c.reference_image_url || null,
-            is_locked: true,
-          }));
-          setCharacterList(mappedChars);
-          setActiveCharIndex(0);
-        }
-        if (data.project.scenes) {
-          setSceneCount(data.project.scenes.length);
-        }
-      }
-    } catch (e: any) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  // Polling project updates when stitching or rendering
-  useEffect(() => {
-    if (!activeProject?.id) return;
-    const isJobActive =
-      activeProject.status === 'stitching' ||
-      activeProject.status === 'rendering' ||
-      (activeProject.video_job?.status as string) === 'pending_assembly' ||
-      (activeProject.video_job?.status as string) === 'rendering' ||
-      isAssembling ||
-      isRemotionRendering;
-
-    if (!isJobActive) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/projects/${activeProject.id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.project) {
-            setActiveProject(data.project);
-            if (data.project.status === 'completed' || data.project.video_url) {
-              setIsAssembling(false);
-              setIsRemotionRendering(false);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [activeProject?.id, activeProject?.status, activeProject?.video_job?.status, isAssembling, isRemotionRendering]);
-
-  const handlePresetChange = (presetName: string) => {
-    setStylePreset(presetName);
-    if (stylePresets[presetName]) {
-      // Update MC appearance prompt
-      setCharacterList((prev) => {
-        const copy = [...prev];
-        if (copy[0]) {
-          copy[0] = { ...copy[0], appearance_locked_prompt: stylePresets[presetName].prompt };
-        }
-        return copy;
-      });
-      setBgmPreset(stylePresets[presetName].defaultBgm);
-    }
-  };
-
-  // Generate Story & Production Steps (Blueprint via LLM)
-  const handleGenerateStory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsGenerating(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch('/api/story/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: projectTitle,
-          storyIdea,
-          genre: `${stylePreset} (BGM: ${bgmPreset})`,
-          productionMode,
-          characters: characterList.map((c) => ({
-            name: c.name,
-            role: c.role,
-            appearance_locked_prompt: c.appearance_locked_prompt,
-            reference_image_url: c.reference_image_url,
-          })),
-          sceneCount,
-          artStyle: stylePreset,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Gagal menghasilkan blueprint cerita');
-      }
-
-      if (data.project) {
-        setActiveProject(data.project);
-        setProjects((prev) => [data.project, ...prev.filter((p) => p.id !== data.project.id)]);
-        setShowStorySetup(false);
-        setCurrentStep(1); // Jump into Step 1 of Wizard
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Terjadi kesalahan saat memproses cerita');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Upload Master Character Image for active character (Step 1)
-  const handleCharacterImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Instant local preview
-    const localUrl = URL.createObjectURL(file);
-    updateCurrentChar({ reference_image_url: localUrl });
-    setIsUploadingChar(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const projectId = activeProject?.id || 'char_master';
-      formData.append('path', `characters/${projectId}_${currentChar.id}_${Date.now()}.png`);
-
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.url) {
-          updateCurrentChar({ reference_image_url: json.url });
-        }
-      }
-    } catch (err) {
-      console.warn('Direct upload error, maintaining local preview:', err);
-    } finally {
-      setIsUploadingChar(false);
-    }
-  };
-
-  // Handle Media Drop in Step 5 (MP4 for Mode A, PNG/JPG for Mode B)
-  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsUploadingClips(true);
-    const newMap = { ...uploadedClips };
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const matchNum = file.name.match(/\d+/);
-      const sceneIndex = matchNum ? parseInt(matchNum[0], 10) : i + 1;
-      
-      newMap[sceneIndex] = file.name;
-
-      // Also upload to Supabase bucket
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        const projectId = activeProject?.id || 'temp';
-        const ext = file.name.split('.').pop() || (productionMode === 'classic_2d' ? 'png' : 'mp4');
-        formData.append('path', `project_clips/${projectId}/scene_${sceneIndex.toString().padStart(3, '0')}.${ext}`);
-        await fetch('/api/upload', { method: 'POST', body: formData });
-      } catch (err) {
-        console.warn('Media upload warning:', err);
-      }
-    }
-
-    setUploadedClips(newMap);
-    setIsUploadingClips(false);
-  };
-
-  // Trigger Final Assembly (Step 5 - Fast FFmpeg Concat)
-  const handleTriggerAssemble = async () => {
-    if (!activeProject) return;
-    setIsAssembling(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch('/api/assemble', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: activeProject.id,
-          bgm_preset: bgmPreset,
-          production_mode: productionMode,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal memulai perakitan');
-
-      await loadProjectDetail(activeProject.id);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memulai assembly');
-      setIsAssembling(false);
-    }
-  };
-
-  // Trigger Remotion 2.5D Rendering (Step 5 - Remotion Engine)
+  // Trigger Remotion Render
   const handleTriggerRemotionRender = async () => {
-    if (!activeProject) return;
-    setIsRemotionRendering(true);
-    setErrorMsg(null);
-
     try {
+      setIsRemotionRendering(true);
+      setErrorMsg(null);
+
       const res = await fetch('/api/render/remotion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_id: activeProject.id,
-          bgm_preset: bgmPreset,
+          projectId: activeProject?.id || 'demo_project',
+          bgmPreset,
+          voiceEngine,
+          voiceEmotion,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Gagal memulai render Remotion');
+      if (!res.ok) throw new Error(data.error || 'Failed to start Remotion render');
 
-      if (data.command) {
-        setRemotionCliCommand(data.command);
+      setRemotionCliCommand(data.cliCommand || null);
+
+      if (data.status === 'completed' && data.videoUrl) {
+        setRenderedVideoUrl(data.videoUrl);
+        setIsRemotionRendering(false);
       }
-
-      await loadProjectDetail(activeProject.id);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memulai render Remotion');
-    } finally {
+      setErrorMsg(err.message || 'Render error');
       setIsRemotionRendering(false);
     }
   };
 
-  const totalRequiredScenes = activeProject?.scenes?.length || sceneCount;
-  const verifiedClipsCount = Object.keys(uploadedClips).length;
-  const isVideoJobActive =
-    activeProject?.status === 'stitching' ||
-    activeProject?.status === 'rendering' ||
-    (activeProject?.video_job?.status as string) === 'pending_assembly' ||
-    (activeProject?.video_job?.status as string) === 'rendering' ||
-    isAssembling ||
-    isRemotionRendering;
-  const isVideoJobComplete = activeProject?.status === 'completed' || !!activeProject?.video_url;
-
   return (
-    <div className="space-y-8 pb-16">
-      {/* Top Banner / Hero */}
-      <div className="relative rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 p-6 shadow-2xl overflow-hidden">
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-medium mb-3">
-              <Sparkles className="w-3.5 h-3.5 animate-pulse text-indigo-300" />
-              <span>
-                {productionMode === 'classic_2d' ? 'Mode B: Classic 2D Manhwa Recap (Zero-Motion)' : 'Mode A: Full-Motion Video (Meta AI I2V)'}
-              </span>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+      {/* ========================================================================= */}
+      {/* TOP HEADER & MANGAFLOW TAB NAVIGATION */}
+      {/* ========================================================================= */}
+      <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md px-4 sm:px-6 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          {/* Logo & Platform Name */}
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <Layout className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
-              <span>AI Manhwa &amp; Anime Recap Studio</span>
-            </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Alur kerja terstruktur dari ide cerita, multi-character lock, batch prompt AutoFlow, hingga perakitan video vertikal 1080x1920.
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3 w-full md:w-auto">
-            <button
-              onClick={() => setShowStorySetup(!showStorySetup)}
-              className="flex-1 md:flex-initial inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition shadow-sm"
-            >
-              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{showStorySetup ? 'Tutup Setup Cerita' : 'Buka Setup Cerita'}</span>
-              {showStorySetup ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-
-            {activeProject && (
-              <button
-                onClick={handleDownloadPackage}
-                className="flex-1 md:flex-initial inline-flex items-center justify-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 transition"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download Paket (.json)</span>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Global Error Banner */}
-      {errorMsg && (
-        <div className="p-4 rounded-xl bg-rose-950/50 border border-rose-800 text-rose-200 text-xs flex items-center justify-between animate-fadeIn">
-          <div className="flex items-center space-x-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-            <span>{errorMsg}</span>
-          </div>
-          <button onClick={() => setErrorMsg(null)} className="text-rose-400 hover:text-white text-sm font-bold ml-4">
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* 1. Form Input Cerita Utama (Global Setup) */}
-      {showStorySetup && (
-        <div className="rounded-2xl bg-slate-900/90 border border-indigo-500/20 p-6 shadow-xl backdrop-blur-sm space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div className="flex items-center space-x-2.5">
-              <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-mono text-xs font-bold border border-indigo-500/30">
-                0
-              </span>
-              <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Global Setup: Pemilihan Mode &amp; Blueprint Cerita
-                </h2>
-                <p className="text-[11px] text-slate-400">
-                  Pilih mode produksi, masukkan sinopsis, dan tentukan karakter utama serta gaya visual manhwa.
-                </p>
-              </div>
-            </div>
-
-            {/* Project Switcher */}
-            {projects.length > 0 && (
+            <div>
               <div className="flex items-center space-x-2">
-                <span className="text-[11px] text-slate-400">Proyek:</span>
-                <select
-                  value={activeProject?.id || ''}
-                  onChange={(e) => loadProjectDetail(e.target.value)}
-                  className="bg-slate-950 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-indigo-500"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title.slice(0, 32)}... ({p.scenes?.length || 0} Scene)
-                    </option>
-                  ))}
-                </select>
+                <span className="font-extrabold text-base tracking-tight text-white">
+                  MangaFlow<span className="text-indigo-400">.Studio</span>
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[9px] font-mono font-bold tracking-wide">
+                  PAGE STUDIO
+                </span>
               </div>
-            )}
-          </div>
-
-          {/* Toggle Sakelar Mode Produksi (Mode A vs Mode B) */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Pilihan Mode Produksi (Production Mode)
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Mode A: Full-Motion */}
-              <div
-                onClick={() => setProductionMode('full_motion')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3.5 ${
-                  productionMode === 'full_motion'
-                    ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-lg shadow-indigo-500/10'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Video className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-white">Mode A: Full-Motion Video</span>
-                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-[10px] font-mono text-indigo-300">
-                      Meta AI I2V
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    AutoFlow gambar -&gt; Animasikan pergerakan kamera 3D di Meta AI -&gt; Ingest video klip MP4.
-                  </p>
-                </div>
-              </div>
-
-              {/* Mode B: Classic 2D Manhwa Recap */}
-              <div
-                onClick={() => setProductionMode('classic_2d')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex items-start space-x-3.5 ${
-                  productionMode === 'classic_2d'
-                    ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-lg shadow-emerald-500/10'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Layers className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-white">Mode B: Classic 2D Manhwa Recap</span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-[10px] font-mono text-emerald-300">
-                      Zero-Motion / Cepat
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    AutoFlow gambar statis (.png/.jpg) -&gt; Langsung stitch dengan narasi, subtitle karaoke .ass &amp; transisi Ken Burns. Tanpa render Meta AI!
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <form onSubmit={handleGenerateStory} className="space-y-5">
-            {/* Judul Proyek & Sinopsis */}
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Judul Proyek / Episode
-              </label>
-              <input
-                type="text"
-                value={projectTitle}
-                onChange={(e) => setProjectTitle(e.target.value)}
-                placeholder="Contoh: Kebangkitan Belati Bayangan: Dendam Kaelen"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Ide Cerita / Sinopsis / Hasil Brainstorming Gemini
-              </label>
-              <textarea
-                rows={4}
-                value={storyIdea}
-                onChange={(e) => setStoryIdea(e.target.value)}
-                placeholder="Tuliskan atau paste alur cerita lengkap, momen plot twist, musuh utama, dan tensi adegan di sini..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
-              />
-            </div>
-
-            {/* Preset Gaya Manhwa & Target Jumlah Scene */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Preset Gaya Manhwa
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {Object.entries(stylePresets).map(([key, val]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => handlePresetChange(key)}
-                      className={`text-left p-2.5 rounded-xl border text-xs transition ${
-                        stylePreset === key
-                          ? 'bg-indigo-950/60 border-indigo-500/80 text-indigo-200'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="font-semibold text-white">{key}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{val.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Target Jumlah Scene
-                </label>
-                <div className="space-y-2">
-                  <select
-                    value={sceneCount}
-                    onChange={(e) => setSceneCount(parseInt(e.target.value, 10))}
-                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value={3}>3 Scenes (Short Teaser)</option>
-                    <option value={5}>5 Scenes (Quick TikTok Recap)</option>
-                    <option value={10}>10 Scenes (Standard Episode)</option>
-                    <option value={20}>20 Scenes (Longform Story)</option>
-                    <option value={30}>30 Scenes (Full Chapter Recap)</option>
-                    <option value={60}>60 Scenes (Epic Long Movie Recap)</option>
-                  </select>
-                  <p className="text-[11px] text-slate-500">
-                    Sistem akan membagi alur cerita menjadi {sceneCount} adegan kronologis siap visualisasi.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Tombol Eksekusi Blueprint */}
-            <div className="pt-2 flex justify-end">
-              <button
-                type="submit"
-                disabled={isGenerating || !storyIdea.trim()}
-                className="inline-flex items-center space-x-2.5 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-xl shadow-indigo-600/30 transition disabled:opacity-50 cursor-pointer"
-              >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                    <span>Merancang Storyboard &amp; Multi-Karakter...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Generate Story &amp; Production Steps</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* 2. Wizard Stepper Navigation Header */}
-      <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-3 shadow-lg">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          {[
-            { step: 1, title: 'Multi-Karakter', subtitle: 'AutoFlow Loop', icon: Users },
-            { step: 2, title: 'Visual Prompts', subtitle: 'Batch AutoFlow', icon: ImageIcon },
-            { 
-              step: 3, 
-              title: productionMode === 'classic_2d' ? '2D Ken Burns' : 'Motion Prompts', 
-              subtitle: productionMode === 'classic_2d' ? 'Transisi Komik (Skip Meta)' : 'Batch Meta AI', 
-              icon: Film 
-            },
-            { step: 4, title: 'BGM & Narasi', subtitle: 'Audio & Voice Engine', icon: Music },
-            { step: 5, title: 'Final Assembly', subtitle: productionMode === 'classic_2d' ? 'Stitch Panel 2D' : 'Stitch Video MP4', icon: Clapperboard },
-          ].map((item) => {
-            const Icon = item.icon;
-            const isActive = currentStep === item.step;
-            const isDone = currentStep > item.step;
-
-            return (
-              <button
-                key={item.step}
-                type="button"
-                onClick={() => setCurrentStep(item.step)}
-                className={`relative flex items-center space-x-2.5 p-3 rounded-xl border text-left transition ${
-                  isActive
-                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-500/10'
-                    : isDone
-                    ? 'bg-slate-950/60 border-slate-800 text-emerald-400 hover:border-slate-700'
-                    : 'bg-slate-950/30 border-slate-800/60 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-bold flex-shrink-0 ${
-                    isActive
-                      ? 'bg-indigo-500 text-white shadow-sm'
-                      : isDone
-                      ? 'bg-emerald-950 border border-emerald-500/40 text-emerald-400'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {isDone ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : item.step}
-                </div>
-                <div className="overflow-hidden">
-                  <div className="text-xs font-bold truncate text-slate-100">{item.title}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{item.subtitle}</div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* STEP 1: Multi-Character Master Creation & Locking */}
-      {/* ========================================================================= */}
-      {currentStep === 1 && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Step Header */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[11px] font-semibold text-indigo-400 mb-1.5">
-                <span>STEP 1 • MULTI-CHARACTER AUTOFLOW LOOP</span>
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                Multi-Character Locking (Protagonis, Heroine &amp; Antagonis)
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Kunci konsistensi visual hingga 3–4 karakter berbeda. Pilih karakter di bawah untuk menyalin variasi prompt atau mengunggah gambar referensi master.
+              <p className="text-[10px] text-slate-400 hidden sm:block">
+                Professional Webtoon &amp; Manga Page Creator + 2.5D Motion Recap
               </p>
             </div>
-
-            <div className="flex items-center space-x-3">
-              <button
-                type="button"
-                onClick={() => updateCurrentChar({ is_locked: !currentChar.is_locked })}
-                className={`inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl border text-xs font-bold transition shadow-sm ${
-                  currentChar.is_locked
-                    ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-emerald-500/10'
-                    : 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-amber-500/10'
-                }`}
-              >
-                {currentChar.is_locked ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{currentChar.name}: Terkunci (LOCKED)</span>
-                  </>
-                ) : (
-                  <>
-                    <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Klik Untuk Mengunci {currentChar.name}</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => copyToClipboard(currentChar.appearance_locked_prompt, `locked_${currentChar.id}`)}
-                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/40 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition"
-              >
-                {copiedType === `locked_${currentChar.id}` ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>Tersalin ke Clipboard!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Locked Prompt</span>
-                  </>
-                )}
-              </button>
-            </div>
           </div>
 
-          {/* Multi-Character Tab Selector */}
-          <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-slate-900 border border-slate-800">
-            {characterList.map((char, idx) => {
-              const isSelected = activeCharIndex === idx;
-              return (
-                <button
-                  key={char.id}
-                  type="button"
-                  onClick={() => setActiveCharIndex(idx)}
-                  className={`inline-flex items-center space-x-2 px-3 py-2 rounded-lg text-xs font-semibold transition ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5 opacity-80" />
-                  <span>{char.name}</span>
-                  <span className="px-1.5 py-0.2 rounded bg-black/40 text-[10px] uppercase font-mono">
-                    {char.role}
-                  </span>
-                  {char.is_locked && <Lock className="w-3 h-3 text-emerald-400" />}
-                </button>
-              );
-            })}
+          {/* 3 Main Studio Work Tabs */}
+          <div className="flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl shadow-inner">
+            <button
+              type="button"
+              onClick={() => setActiveTab('script_engine')}
+              className={`inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'script_engine'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>1. Script &amp; Cast</span>
+            </button>
 
-            {characterList.length < 4 && (
-              <button
-                type="button"
-                onClick={handleAddNewCharacter}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Karakter</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('canvas_editor')}
+              className={`inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'canvas_editor'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <Layout className="w-3.5 h-3.5" />
+              <span>2. Comic Canvas</span>
+              <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-mono">
+                CORE
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('export_recap')}
+              className={`inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === 'export_recap'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>3. Export &amp; Motion</span>
+            </button>
           </div>
 
-          {/* Character Editor Row */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Right Header Actions */}
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setIsSystemSettingsOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 text-xs font-semibold transition"
+              title="System Settings (Backend Worker, Voice Engine, CLI)"
+            >
+              <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">System Settings</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* MAIN STUDIO VIEWPORT */}
+      {/* ========================================================================= */}
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6">
+        {/* ===================================================================== */}
+        {/* TAB 1: [Script & Character Engine] */}
+        {/* ===================================================================== */}
+        {activeTab === 'script_engine' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Header */}
+            <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  Nama Karakter
-                </label>
-                <input
-                  type="text"
-                  value={currentChar.name}
-                  onChange={(e) => updateCurrentChar({ name: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  Peran (Role)
-                </label>
-                <select
-                  value={currentChar.role}
-                  onChange={(e) => updateCurrentChar({ role: e.target.value as any })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="protagonist">Protagonist (MC)</option>
-                  <option value="heroine">Heroine / Ally Utama</option>
-                  <option value="antagonist">Antagonist / Boss Monster</option>
-                  <option value="supporting">Supporting / Party Member</option>
-                  <option value="mentor">Mentor / Master / Entity</option>
-                </select>
-              </div>
-
-              <div className="flex items-end justify-between">
-                {characterList.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCharacter(activeCharIndex)}
-                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900 border border-rose-800 text-[11px] font-medium text-rose-300 transition"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Hapus Karakter Ini</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                Kunci Penampilan (Locked Appearance Description)
-              </label>
-              <textarea
-                rows={2}
-                value={currentChar.appearance_locked_prompt}
-                onChange={(e) => updateCurrentChar({ appearance_locked_prompt: e.target.value })}
-                className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-          </div>
-
-          {/* Grid: 3 Variasi AI Character Prompts + Upload Dropzone */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Kolom Kiri: 3 Variasi Prompt Karakter Terpilih */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between">
-                <span>3 Variasi Prompt Master untuk {currentChar.name}</span>
-                <span className="text-[11px] font-normal text-slate-500">Pilih salah satu variasi untuk di-generate di Google Flow</span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3.5">
-                {getCharacterVariations(currentChar).map((v) => (
-                  <div
-                    key={v.id}
-                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-bold text-white">{v.title}</span>
-                        <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300 font-medium">
-                          {v.badge}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            updateCurrentChar({ appearance_locked_prompt: v.prompt, is_locked: true });
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-medium text-slate-300 transition"
-                        >
-                          Pilih Jadi Kunci
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(v.prompt, v.id)}
-                          className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-[11px] font-semibold text-white transition"
-                        >
-                          {copiedType === v.id ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-300" />
-                              <span>Tersalin!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Copy Prompt</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-slate-400 leading-relaxed">{v.desc}</p>
-
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-[11px] font-mono text-slate-300 leading-relaxed select-all">
-                      {v.prompt}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Kolom Kanan: Upload / Dropzone Gambar Karakter Master */}
-            <div className="space-y-4">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Upload Master Image: {currentChar.name}
-              </div>
-
-              <div
-                onClick={() => charFileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 bg-slate-900/50 hover:bg-slate-900 flex flex-col items-center justify-center text-center cursor-pointer transition group"
-              >
-                <input
-                  type="file"
-                  ref={charFileInputRef}
-                  onChange={handleCharacterImageUpload}
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                />
-
-                {isUploadingChar ? (
-                  <div className="py-8 flex flex-col items-center space-y-2">
-                    <RefreshCw className="w-8 h-8 animate-spin text-indigo-400" />
-                    <span className="text-xs text-slate-300">Mengunggah gambar ke storage...</span>
-                  </div>
-                ) : currentChar.reference_image_url ? (
-                  <div className="space-y-3 w-full">
-                    <div className="relative aspect-[3/4] max-w-[220px] mx-auto rounded-xl overflow-hidden border-2 border-emerald-500/80 shadow-xl shadow-emerald-500/10">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={currentChar.reference_image_url}
-                        alt={currentChar.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/80 border border-emerald-500 text-[10px] font-mono text-emerald-300">
-                        {currentChar.name.toUpperCase()} LOCKED
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-emerald-400 flex items-center justify-center space-x-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Master {currentChar.name} Terpasang</span>
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Klik untuk ganti gambar lain</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-8 space-y-3">
-                    <div className="w-12 h-12 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mx-auto group-hover:scale-105 transition">
-                      <Upload className="w-6 h-6 text-indigo-400" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white">Drop Gambar Master {currentChar.name}</div>
-                      <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                        Masukkan 1 gambar terbaik hasil generate dari Google Flow untuk referensi visual {currentChar.name}.
-                      </p>
-                    </div>
-                    <span className="inline-block px-3 py-1 rounded-lg bg-slate-800 text-[11px] font-medium text-slate-300">
-                      Pilih File (PNG / JPG / WEBP)
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Status Box */}
-              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="text-xs font-bold text-slate-200 flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Multi-Karakter Terkunci</span>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Di Step 2, sistem otomatis menyematkan prompt visual karakter yang terlibat di setiap adegan cerita.
+                <span className="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold tracking-wider">
+                  TAB 1 • SCRIPT &amp; CHARACTER ENGINE
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-2">
+                  Story Script Breakdown &amp; Character Master Sheet
+                </h1>
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Masukkan naskah atau premis cerita komik Anda. Sistem memecah cerita menjadi urutan panel per halaman lengkap dengan deskripsi visual prompt untuk Google Flow dan dialog karakter.
                 </p>
               </div>
 
-              {/* Tombol Lanjut ke Step 2 */}
               <button
                 type="button"
-                onClick={() => setCurrentStep(2)}
-                className="w-full inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
+                onClick={() => setActiveTab('canvas_editor')}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition self-start md:self-auto shrink-0"
               >
-                <span>Lanjut ke Step 2: Scene Visual Prompts</span>
+                <span>Buka Comic Canvas Editor</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ========================================================================= */}
-      {/* STEP 2: Scene Visual Prompts (Batch AutoFlow untuk Adegan Cerita) */}
-      {/* ========================================================================= */}
-      {currentStep === 2 && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Step Header */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-[11px] font-semibold text-purple-400 mb-1.5">
-                <span>STEP 2 • BATCH SCENE PROMPTS</span>
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                Scene Visual Prompts (Batch AutoFlow untuk Adegan Cerita)
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Seluruh adegan cerita ({activeProject?.scenes?.length || sceneCount} scene) lengkap dengan narasi suara dan prompt visual yang telah menggabungkan deskripsi karakter terkait.
-              </p>
-            </div>
+            {/* 2-Column Grid: Left (Premise & Characters), Right (Script Pages) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column (5 Cols): Script Input & Multi-Character Sheet */}
+              <div className="lg:col-span-5 space-y-5">
+                {/* Story Synopsis Box */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                    <FileText className="w-4 h-4 text-indigo-400" />
+                    <span>Premis &amp; Naskah Cerita</span>
+                  </h3>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => copyToClipboard(getAutoflowVisualBatch(), 'autoflow_batch')}
-                className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 transition cursor-pointer"
-              >
-                {copiedType === 'autoflow_batch' ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Semua Scene Tersalin!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy All for AutoFlow</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => downloadTextFile(getAutoflowVisualBatch(), `autoflow_prompts_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download .txt</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowRawDrawer(!showRawDrawer)}
-                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>{showRawDrawer ? 'Tutup Preview Raw' : 'Lihat Batch Raw'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Raw Drawer for AutoFlow */}
-          {showRawDrawer && (
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                <span>Raw Batch AutoFlow (1 baris per adegan):</span>
-                <span className="text-[10px] text-slate-500">Format siap paste langsung ke ekstensi browser</span>
-              </div>
-              <textarea
-                readOnly
-                rows={6}
-                value={getAutoflowVisualBatch()}
-                className="w-full p-3 rounded-lg bg-black/60 border border-slate-800 font-mono text-[11px] text-emerald-300/90 leading-relaxed focus:outline-none"
-              />
-            </div>
-          )}
-
-          {/* Daftar Adegan Detail (Scene 1 s/d N) */}
-          <div className="space-y-4">
-            {(!activeProject?.scenes || activeProject.scenes.length === 0) ? (
-              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-3">
-                <p className="text-xs text-slate-400">
-                  Belum ada adegan cerita yang di-generate. Buka menu &quot;Setup Cerita&quot; di atas lalu klik &quot;Generate Story &amp; Production Steps&quot;.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowStorySetup(true)}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white transition"
-                >
-                  Buka Setup Cerita
-                </button>
-              </div>
-            ) : (
-              activeProject.scenes.map((scene) => (
-                <div
-                  key={scene.id || scene.scene_order}
-                  className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-3"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
-                    <div className="flex items-center space-x-2.5">
-                      <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
-                        Scene {scene.scene_order.toString().padStart(2, '0')}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[11px] font-semibold text-slate-200">
-                        {scene.character_name || characterList[0]?.name || 'Protagonist'}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(scene.visual_prompt, `scene_${scene.scene_order}`)}
-                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
-                    >
-                      {copiedType === `scene_${scene.scene_order}` ? (
-                        <>
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span>Tersalin!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          <span>Copy Scene Prompt</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Teks Narasi Bahasa Indonesia */}
-                  <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center space-x-1.5">
-                      <Volume2 className="w-3 h-3" />
-                      <span>Narasi Suara (Indonesian Voiceover)</span>
-                    </div>
-                    <p className="text-xs text-amber-100/90 leading-relaxed font-sans">
-                      &quot;{scene.narration_text}&quot;
-                    </p>
-                  </div>
-
-                  {/* Visual Prompt Box */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Visual Prompt (AutoFlow Ready)
-                    </div>
-                    <p className="text-xs font-mono text-emerald-300/90 leading-relaxed select-all">
-                      {scene.visual_prompt}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Stepper Navigation Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(1)}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Kembali ke Step 1</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCurrentStep(productionMode === 'classic_2d' ? 4 : 3)}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
-            >
-              <span>
-                {productionMode === 'classic_2d' 
-                  ? 'Lanjut ke Step 4: BGM & Narasi (Mode B Fast Track)' 
-                  : 'Lanjut ke Step 3: Camera Motion Prompts'}
-              </span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* STEP 3: Camera Motion Prompts / 2D Ken Burns Transition */}
-      {/* ========================================================================= */}
-      {currentStep === 3 && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Step Header */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[11px] font-semibold text-sky-400 mb-1.5">
-                <span>
-                  {productionMode === 'classic_2d' ? 'STEP 3 • 2D KEN BURNS & PANEL TRANSITION' : 'STEP 3 • META AI 3D MOTION ENGINE'}
-                </span>
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                {productionMode === 'classic_2d' 
-                  ? 'Panel Display & Transisi 2D Ken Burns (Mode B: Fast Production)' 
-                  : 'Camera Motion Prompts (Batch Meta AI Automation)'}
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {productionMode === 'classic_2d'
-                  ? 'Pada Mode B (Classic 2D), Anda tidak perlu menggunakan Meta AI! Gambar statis akan otomatis dianimasikan dengan zoom/pan lembut dan transisi komik digital saat perakitan di Step 5.'
-                  : 'Instruksi pergerakan kamera sinematik 3D (crash zoom, pan tracking, aura burst, drifting particles) untuk ekstensi Meta AI.'}
-              </p>
-            </div>
-
-            {productionMode === 'full_motion' && (
-              <div className="flex flex-wrap items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(getMetaMotionBatch(), 'meta_batch')}
-                  className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-sky-600/20 transition cursor-pointer"
-                >
-                  {copiedType === 'meta_batch' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Semua Motion Tersalin!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy All for Meta Automation</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => downloadTextFile(getMetaMotionBatch(), `meta_motion_${activeProject?.id?.slice(0, 8) || 'batch'}.txt`)}
-                  className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download .txt</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Mode B Notice Banner */}
-          {productionMode === 'classic_2d' && (
-            <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-start space-x-3 text-xs text-emerald-200">
-              <Zap className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-bold text-white">Mode B (Zero-Motion) Aktif:</span>
-                <p className="text-emerald-300/80 text-[11px] leading-relaxed">
-                  Anda dapat melewati tahap pembuatan video di Meta AI. Cukup pastikan kumpulan gambar panel hasil unduhan Google Flow siap diunggah di Step 5. Efek Ken Burns dan pergeseran fokus akan disinkronkan tepat dengan durasi vokal Edge-TTS secara otomatis!
-                </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(5)}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition"
-                  >
-                    <span>Langsung Lanjut ke Step 5: Final Assembly</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* List Motion Prompts per Scene */}
-          <div className="space-y-3.5">
-            {(!activeProject?.scenes || activeProject.scenes.length === 0) ? (
-              <div className="p-8 rounded-2xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-400">
-                Belum ada adegan. Buka Step 1 &amp; generate cerita terlebih dahulu.
-              </div>
-            ) : (
-              activeProject.scenes.map((scene) => {
-                const motionPrompt = getMetaMotionPrompt(scene);
-                return (
-                  <div
-                    key={scene.id || scene.scene_order}
-                    className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2.5">
-                        <span className="px-2 py-0.5 rounded-md bg-sky-500/20 border border-sky-500/30 text-sky-300 font-mono text-xs font-bold">
-                          Scene {scene.scene_order.toString().padStart(2, '0')}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono text-slate-300 uppercase">
-                          {scene.camera_motion || 'zoom_in'}
-                        </span>
-                      </div>
-
-                      {productionMode === 'full_motion' && (
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(motionPrompt, `motion_${scene.scene_order}`)}
-                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition"
-                        >
-                          {copiedType === `motion_${scene.scene_order}` ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-400" />
-                              <span>Tersalin!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>Copy Motion</span>
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 text-xs font-mono text-sky-200/90 leading-relaxed select-all">
-                      {productionMode === 'classic_2d' 
-                        ? `2D Pan/Zoom: ${scene.camera_motion || 'zoom_in'} (Digital comic Ken Burns transition)` 
-                        : motionPrompt}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Stepper Navigation Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(2)}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Kembali ke Step 2</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCurrentStep(4)}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
-            >
-              <span>Lanjut ke Step 4: BGM &amp; Soundtrack</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* STEP 4: BGM & Soundtrack Setup */}
-      {/* ========================================================================= */}
-      {currentStep === 4 && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Step Header */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[11px] font-semibold text-amber-400 mb-1.5">
-                <span>STEP 4 • AUDIO &amp; SOUNDTRACK ENGINE</span>
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                BGM Preset &amp; Soundtrack Setup
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Pilih preset musik latar sinematik atau gunakan prompt AI Music Generator untuk membuat musik orisinal di Suno / Udio.
-              </p>
-            </div>
-          </div>
-
-          {/* Grid Preset BGM */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {bgmOptions.map((opt) => (
-              <div
-                key={opt.id}
-                onClick={() => setBgmPreset(opt.id as any)}
-                className={`p-4 rounded-2xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
-                  bgmPreset === opt.id
-                    ? 'bg-amber-950/40 border-amber-500/80 shadow-lg shadow-amber-500/10'
-                    : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xl">{opt.icon}</span>
-                    {bgmPreset === opt.id && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-[10px] font-bold text-amber-400 border border-amber-500/30">
-                        AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-sm font-bold text-white mt-2">{opt.label}</h3>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{opt.desc}</p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      copyToClipboard(opt.aiMusicPrompt, `music_${opt.id}`);
-                    }}
-                    className="w-full inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 transition"
-                  >
-                    {copiedType === `music_${opt.id}` ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        <span>Prompt Musik Tersalin!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy Prompt Suno / Udio</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Voice Synthesis Engine Selector */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-2">
-                <Mic className="w-4 h-4 text-purple-400" />
-                <span>Voiceover Synthesis Engine (Indonesian AI Narration)</span>
-              </div>
-              <span className="text-[11px] text-slate-400">Pilih mesin vokal untuk narasi cerita dan penjajaran karaoke kata</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Option A: Edge-TTS */}
-              <div
-                onClick={() => setVoiceEngine('edge_tts')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
-                  voiceEngine === 'edge_tts'
-                    ? 'bg-indigo-950/40 border-indigo-500/80 shadow-lg shadow-indigo-500/10'
-                    : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-indigo-400 font-mono tracking-wider">FAST • ZERO-COMPUTE</span>
-                    {voiceEngine === 'edge_tts' && (
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-400 border border-indigo-500/30">
-                        AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="text-sm font-bold text-white mt-2 flex items-center space-x-2">
-                    <span>Edge-TTS (id-ID-ArdiNeural)</span>
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Sintesis instan tanpa beban komputasi lokal. Suara narator pria dramatis berbahasa Indonesia dengan timing WordBoundary native.
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                  <span>Latency: ~0.8s</span>
-                  <span className="text-emerald-400">Zero GPU Usage</span>
-                </div>
-              </div>
-
-              {/* Option B: VoxCPM Neural Actor */}
-              <div
-                onClick={() => setVoiceEngine('voxcpm')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between space-y-3 ${
-                  voiceEngine === 'voxcpm'
-                    ? 'bg-purple-950/40 border-purple-500/80 shadow-lg shadow-purple-500/10'
-                    : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-purple-400 font-mono tracking-wider">48kHz • HIGH-EMOTION</span>
-                    {voiceEngine === 'voxcpm' && (
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-[10px] font-bold text-purple-400 border border-purple-500/30">
-                        AKTIF
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="text-sm font-bold text-white mt-2 flex items-center space-x-2">
-                    <span>VoxCPM Neural Actor</span>
-                    <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono">RTX 3060 Ti</span>
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Model difusi vokal ekspresif beresolusi tinggi (48kHz) dengan kontrol prosodi emosi &amp; penjajaran kata otomatis faster-whisper.
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                  <span className="text-emerald-400">● Checkpoint Ready</span>
-                  <span className="text-purple-300">Auto-Fallback to Edge-TTS</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Emotion Selector when VoxCPM is selected */}
-            {voiceEngine === 'voxcpm' && (
-              <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-900/40 space-y-2.5 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-200">
-                    Pilih Emosi &amp; Gaya Akting Suara VoxCPM:
-                  </span>
-                  <span className="text-[11px] font-mono text-purple-400">
-                    Mode: {voiceEmotion.toUpperCase()}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {[
-                    { id: 'dramatic', label: 'Dramatic', desc: 'Epik & Megah' },
-                    { id: 'intense', label: 'Intense', desc: 'Tegang & Cepat' },
-                    { id: 'calm', label: 'Calm', desc: 'Misterius & Tenang' },
-                    { id: 'whisper', label: 'Whisper', desc: 'Bisikan Horor' },
-                    { id: 'angry', label: 'Angry', desc: 'Amarah Demon' }
-                  ].map((emo) => (
-                    <button
-                      key={emo.id}
-                      type="button"
-                      onClick={() => setVoiceEmotion(emo.id as any)}
-                      className={`px-3 py-2 rounded-lg border text-left transition ${
-                        voiceEmotion === emo.id
-                          ? 'bg-purple-600/30 border-purple-500 text-white font-bold'
-                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-medium capitalize">{emo.label}</div>
-                      <div className="text-[10px] text-slate-400">{emo.desc}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* CLI Command Helper for Batch Voiceover */}
-            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center space-x-2 text-slate-400 font-mono text-[11px] truncate">
-                <span className="text-amber-400">$</span>
-                <span className="text-slate-300 truncate">
-                  python backend/generate_audio.py --project-id {activeProject?.id || '<PROJECT_ID>'} --engine {voiceEngine} {voiceEngine === 'voxcpm' ? `--emotion ${voiceEmotion}` : ''}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(
-                  `python backend/generate_audio.py --project-id ${activeProject?.id || '<PROJECT_ID>'} --engine ${voiceEngine}${voiceEngine === 'voxcpm' ? ` --emotion ${voiceEmotion}` : ''}`,
-                  'voice_cli'
-                )}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-300 transition shrink-0"
-              >
-                {copiedType === 'voice_cli' ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-400" />
-                    <span>Tersalin</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" />
-                    <span>Copy CLI</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Preview Narasi Suara per Adegan */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-2">
-                <Volume2 className="w-4 h-4 text-indigo-400" />
-                <span>
-                  {voiceEngine === 'voxcpm'
-                    ? `Preview Narasi Suara VoxCPM Neural Actor (${voiceEmotion.toUpperCase()})`
-                    : 'Preview Narasi Suara Edge-TTS Bahasa Indonesia'}
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-400">
-                {voiceEngine === 'voxcpm'
-                  ? 'Model: openbmb/VoxCPM2 (48kHz Hi-Fi + Whisper Base)'
-                  : 'Suara: id-ID-ArdiNeural (Dramatic Narration)'}
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {activeProject?.scenes?.map((scene) => (
-                <div
-                  key={scene.id || scene.scene_order}
-                  className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center space-x-2.5">
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[11px] font-bold">
-                      Scene {scene.scene_order.toString().padStart(2, '0')}
-                    </span>
-                    <span className="text-slate-200 font-medium">
-                      &quot;{scene.narration_text}&quot;
-                    </span>
-                  </div>
-
-                  {scene.audio_url ? (
-                    <audio controls src={scene.audio_url} className="h-8 max-w-[220px]" />
-                  ) : (
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-1 rounded border border-emerald-800/50">
-                      Word-Timestamps Ready
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Stepper Navigation Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(productionMode === 'classic_2d' ? 2 : 3)}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Kembali</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setCurrentStep(5)}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer"
-            >
-              <span>Lanjut ke Step 5: Final Assembly</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* STEP 5: Final Assembly & Compilation */}
-      {/* ========================================================================= */}
-      {currentStep === 5 && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Step Header */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="inline-flex items-center space-x-2 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-semibold text-emerald-400 mb-1.5">
-                <span>
-                  {productionMode === 'classic_2d' ? 'STEP 5 • 2D MANHWA PANEL STITCHING' : 'STEP 5 • FULL-MOTION COMPILATION'}
-                </span>
-              </div>
-              <h2 className="text-lg font-bold text-white">
-                {productionMode === 'classic_2d' 
-                  ? 'Perakitan Episode 2D Manhwa (Panel Statis + Ken Burns + Karaoke Subtitle)' 
-                  : 'Perakitan Final Episode (Video Concat + SFX + BGM)'}
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {productionMode === 'classic_2d'
-                  ? 'Drop kumpulan GAMBAR panel (.png / .jpg) hasil download Google Flow. Sistem akan menggabungkan panel statis dengan transisi Ken Burns, vokal Edge-TTS, subtitle .ass, SFX whoosh & BGM.'
-                  : 'Drop kumpulan video klip MP4 dari Meta AI, lalu klik "Assemble Final Episode" untuk mengeksekusi vokal, subtitle karaoke, SFX, dan BGM.'}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={fetchProjects}
-              className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>Sync Local Clips</span>
-            </button>
-          </div>
-
-          {/* Render Engine Selector */}
-          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-                <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Pilih Render Engine Video</span>
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Pilih mesin kompilasi video akhir
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Option A: Remotion Engine */}
-              <div
-                onClick={() => setRenderEngine('remotion')}
-                className={`p-4 rounded-xl border cursor-pointer transition relative flex flex-col justify-between ${
-                  renderEngine === 'remotion'
-                    ? 'bg-gradient-to-br from-indigo-950/60 to-slate-900 border-indigo-500 ring-1 ring-indigo-500/50 shadow-lg shadow-indigo-500/10'
-                    : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-400'
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-300 border border-indigo-500/40">
-                      <Sparkles className="w-3 h-3 text-indigo-400" />
-                      <span>RECOMMENDED • CINEMATIC 2.5D</span>
-                    </div>
-                    {renderEngine === 'remotion' && (
-                      <CheckCircle2 className="w-4 h-4 text-indigo-400" />
-                    )}
-                  </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">
-                      Mode Cinematic 2.5D (Remotion Engine)
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      Animasi kedalaman 2.5D depth parallax, auto character cutout (rembg), kinetic gold pop captions, transisi dinamis, dan smart audio ducking.
-                    </p>
+                    <label className="text-[11px] font-semibold text-slate-400">Judul Proyek</label>
+                    <input
+                      type="text"
+                      value={storyTitle}
+                      onChange={(e) => setStoryTitle(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+                    />
                   </div>
-                </div>
-                <div className="flex items-center space-x-2 mt-3 pt-2 border-t border-indigo-500/20 text-[10px] text-indigo-300 font-mono">
-                  <span>• React + TypeScript Video Engine</span>
-                  <span>• Live In-Browser Preview</span>
-                </div>
-              </div>
 
-              {/* Option B: Fast FFmpeg Concat */}
-              <div
-                onClick={() => setRenderEngine('ffmpeg')}
-                className={`p-4 rounded-xl border cursor-pointer transition relative flex flex-col justify-between ${
-                  renderEngine === 'ffmpeg'
-                    ? 'bg-gradient-to-br from-emerald-950/60 to-slate-900 border-emerald-500 ring-1 ring-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                    : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-400'
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-300 border border-emerald-500/40">
-                      <Zap className="w-3 h-3 text-emerald-400" />
-                      <span>FAST • ZERO-RENDER STITCH</span>
-                    </div>
-                    {renderEngine === 'ffmpeg' && (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    )}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">
-                      Mode Fast (FFmpeg Concat)
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                      Stream copy dan stitch langsung klip video hasil render Meta AI / panel statis Ken Burns, audio Edge-TTS, dan subtitle .ass standar.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 mt-3 pt-2 border-t border-emerald-500/20 text-[10px] text-emerald-300 font-mono">
-                  <span>• Direct FFmpeg Binary</span>
-                  <span>• Fast Assembly Execution</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Live Remotion 2.5D Real-Time Canvas Preview */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Film className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white">
-                  Real-Time Studio Canvas Preview
-                </h3>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-[10px] text-indigo-300 font-semibold">
-                  Zero-Export Instant Playback
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-400">
-                Uji coba visual, animasi teks, dan audio sebelum merender MP4 final
-              </span>
-            </div>
-
-            <RemotionPreviewPlayer
-              projectTitle={activeProject?.title || projectTitle}
-              scenes={activeProject?.scenes || []}
-              uploadedClips={uploadedClips}
-              bgmPreset={bgmPreset}
-              bgmVolume={0.25}
-            />
-          </div>
-
-          {/* Area Dropzone Media (Gambar untuk Mode B, Video untuk Mode A) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
-              <div
-                onClick={() => mediaFileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 bg-slate-900/50 hover:bg-slate-900 flex flex-col items-center justify-center text-center cursor-pointer transition group"
-              >
-                <input
-                  type="file"
-                  ref={mediaFileInputRef}
-                  onChange={handleMediaUpload}
-                  multiple
-                  accept={productionMode === 'classic_2d' ? 'image/png,image/jpeg,image/webp' : 'video/mp4,video/webm,video/mov'}
-                  className="hidden"
-                />
-
-                {isUploadingClips ? (
-                  <div className="py-6 flex flex-col items-center space-y-2">
-                    <RefreshCw className="w-8 h-8 animate-spin text-emerald-400" />
-                    <span className="text-xs text-slate-300">
-                      {productionMode === 'classic_2d' ? 'Mengunggah & mengidentifikasi panel gambar...' : 'Mengunggah & mengidentifikasi klip video...'}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="py-6 space-y-2.5">
-                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto group-hover:scale-105 transition">
-                      {productionMode === 'classic_2d' ? <ImageIcon className="w-6 h-6 text-emerald-400" /> : <Video className="w-6 h-6 text-emerald-400" />}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400">Genre</label>
+                      <input
+                        type="text"
+                        value={genre}
+                        onChange={(e) => setGenre(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      />
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-white">
-                        {productionMode === 'classic_2d'
-                          ? 'Drop Kumpulan Gambar Panel Manhwa (.PNG / .JPG) dari Google Flow'
-                          : 'Drop Kumpulan Video MP4 Meta AI di Sini'}
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5 max-w-sm">
-                        {productionMode === 'classic_2d'
-                          ? `Pilih sekaligus semua file gambar panel hasil unduhan Google Flow (scene 1 s/d ${totalRequiredScenes}).`
-                          : `Pilih sekaligus semua file video unduhan dari Meta AI (scene 1 s/d ${totalRequiredScenes}).`}
-                      </p>
-                      <code className="mt-2 inline-block px-2.5 py-1 rounded bg-slate-950 font-mono text-[10px] text-emerald-300 border border-slate-800">
-                        storage/raw_downloads/{activeProject?.id || 'project_id'}/
-                      </code>
+                      <label className="text-[11px] font-semibold text-slate-400">Gaya Art</label>
+                      <select
+                        value={artStyle}
+                        onChange={(e) => setArtStyle(e.target.value)}
+                        className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                      >
+                        <option value="Solo Leveling / Dark Fantasy">Solo Leveling / Dark Fantasy</option>
+                        <option value="Omniscient Reader / Modern Hunter">Omniscient Reader / Modern</option>
+                        <option value="Murim / Heavenly Demon Cultivation">Murim Martial Arts</option>
+                        <option value="Magic Emperor / Demonic Sovereign">Magic Emperor</option>
+                      </select>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Status Readiness Scene Clips */}
-              <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span className="text-white">
-                    {productionMode === 'classic_2d' ? 'Status Kesiapan Panel Gambar:' : 'Status Verifikasi Klip Video:'}
-                  </span>
-                  <span className="text-emerald-400">
-                    {verifiedClipsCount}/{totalRequiredScenes} {productionMode === 'classic_2d' ? 'Panel Terdeteksi' : 'Klip Terdeteksi'}
-                  </span>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400">Sinopsis / Naskah</label>
+                    <textarea
+                      rows={5}
+                      value={storySynopsis}
+                      onChange={(e) => setStorySynopsis(e.target.value)}
+                      className="w-full mt-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 leading-relaxed"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {Array.from({ length: totalRequiredScenes }).map((_, idx) => {
-                    const scNum = idx + 1;
-                    const isReady = !!uploadedClips[scNum];
-                    return (
-                      <div
-                        key={scNum}
-                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
-                          isReady
-                            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                            : 'bg-slate-950 border-slate-800 text-slate-500'
+                {/* Multi-Character Master Sheet */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center space-x-2">
+                      <UserCheck className="w-4 h-4 text-purple-400" />
+                      <span>Multi-Character Master Sheet</span>
+                    </h3>
+                    <span className="text-[10px] font-mono text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/40">
+                      Consistency Lock
+                    </span>
+                  </div>
+
+                  {/* Character Selector Pills */}
+                  <div className="flex space-x-1.5 overflow-x-auto pb-1">
+                    {characters.map((char, idx) => (
+                      <button
+                        key={char.id}
+                        type="button"
+                        onClick={() => setActiveCharIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 ${
+                          activeCharIndex === idx
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
                         }`}
                       >
-                        <span className="font-mono font-semibold">Scene {scNum.toString().padStart(2, '0')}</span>
-                        {isReady ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Clock className="w-3.5 h-3.5 text-slate-600" />
-                        )}
+                        {char.name} ({char.role})
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Active Character Detail */}
+                  {characters[activeCharIndex] && (
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">
+                          {characters[activeCharIndex].name}
+                        </span>
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                          {characters[activeCharIndex].role}
+                        </span>
                       </div>
-                    );
-                  })}
+
+                      <div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                          <span>Prompt Konsistensi AutoFlow / Google Flow:</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              copyToClipboard(
+                                characters[activeCharIndex].appearance_locked_prompt,
+                                `char_${characters[activeCharIndex].id}`
+                              )
+                            }
+                            className="inline-flex items-center space-x-1 text-indigo-400 hover:text-indigo-300 text-[10px] font-semibold"
+                          >
+                            {copiedType === `char_${characters[activeCharIndex].id}` ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>Tersalin!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>Copy Prompt</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 font-mono leading-relaxed">
+                          {characters[activeCharIndex].appearance_locked_prompt}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Kolom Kanan: Tombol Utama & Instruksi Assemble */}
-            <div className="space-y-4">
-              <div className={`p-5 rounded-2xl border space-y-4 shadow-xl ${
-                renderEngine === 'remotion'
-                  ? 'bg-gradient-to-b from-indigo-950/50 to-slate-900 border-indigo-500/40'
-                  : 'bg-gradient-to-b from-emerald-950/40 to-slate-900 border-emerald-500/30'
-              }`}>
-                <div>
-                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-semibold text-slate-300 mb-2">
-                    <span>Engine Aktif: {renderEngine === 'remotion' ? 'Remotion 2.5D' : 'FFmpeg Concat'}</span>
+              {/* Right Column (7 Cols): Script Breakdown into Pages & Panels */}
+              <div className="lg:col-span-7 space-y-5">
+                <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                        Hasil Pembagian Naskah ke Halaman Komik
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Tiap halaman dibagi menjadi panel-panel dengan deskripsi gambar, dialog, dan balon ucapan otomatis.
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-mono text-indigo-400">
+                      {pages.length} Halaman Siap
+                    </span>
                   </div>
-                  <h3 className="text-sm font-bold text-white">
-                    {renderEngine === 'remotion'
-                      ? 'Render Episode Cinematic 2.5D'
-                      : productionMode === 'classic_2d'
-                      ? 'Eksekusi Perakitan 2D Manhwa'
-                      : 'Eksekusi Final Studio'}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    {renderEngine === 'remotion'
-                      ? 'Menjalankan Remotion Headless Renderer, membuat cutout karakter (rembg), merender parallax multi-layer, kinetic gold captions, dan mengunggah ke Supabase CDN.'
-                      : productionMode === 'classic_2d'
-                      ? 'Menggabungkan panel gambar statis dengan pergerakan kamera Ken Burns lembut, narasi vokal Edge-TTS, subtitle karaoke dinamis (.ass), SFX whoosh transisi komik, dan BGM sinematik.'
-                      : 'Menyatukan video klip Meta AI, suara Edge-TTS, subtitle karaoke dinamis (.ass), SFX transisi, dan mixing BGM 3-fase.'}
-                  </p>
-                </div>
 
-                {renderEngine === 'remotion' ? (
-                  <button
-                    type="button"
-                    onClick={handleTriggerRemotionRender}
-                    disabled={isVideoJobActive}
-                    className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:opacity-95 text-sm font-black text-white shadow-xl shadow-indigo-500/25 transition disabled:opacity-50 cursor-pointer"
-                  >
-                    {isVideoJobActive ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                        <span>Sedang Merender Remotion 2.5D...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 text-white" />
-                        <span>Render 2.5D Remotion Episode</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleTriggerAssemble}
-                    disabled={isVideoJobActive}
-                    className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:opacity-95 text-sm font-black text-slate-950 shadow-xl shadow-emerald-500/20 transition disabled:opacity-50 cursor-pointer"
-                  >
-                    {isVideoJobActive ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
-                        <span>Sedang Merakit Final Episode...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clapperboard className="w-4 h-4 text-slate-950" />
-                        <span>
-                          {productionMode === 'classic_2d' ? 'Assemble 2D Manhwa Episode' : 'Assemble Final Episode'}
-                        </span>
-                      </>
-                    )}
-                  </button>
-                )}
+                  {/* Pages Loop */}
+                  <div className="space-y-4">
+                    {pages.map((pg, pgIdx) => (
+                      <div
+                        key={pg.id}
+                        className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3"
+                      >
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-xs font-bold">
+                              Halaman {pg.pageNumber}
+                            </span>
+                            <span className="text-xs font-bold text-white">{pg.title}</span>
+                          </div>
 
-                {/* Local Terminal Hint */}
-                <div className="pt-2 border-t border-slate-800 text-[11px] text-slate-400 space-y-2">
-                  <div className="flex items-center space-x-1.5 text-slate-300 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                    <span>Perintah CLI Lokal:</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <code className="flex-1 p-2 rounded bg-black/80 font-mono text-[10px] text-indigo-300 border border-slate-800 select-all truncate">
-                      {renderEngine === 'remotion'
-                        ? `python backend/remotion_renderer.py --project-id ${activeProject?.id || 'PROJECT_ID'}`
-                        : 'run_auto_ingest.bat'}
-                    </code>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cmd =
-                          renderEngine === 'remotion'
-                            ? `python backend/remotion_renderer.py --project-id ${activeProject?.id || 'PROJECT_ID'}`
-                            : 'run_auto_ingest.bat';
-                        navigator.clipboard.writeText(cmd);
-                        setCopiedType('cli_cmd');
-                        setTimeout(() => setCopiedType(null), 2000);
-                      }}
-                      className="p-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
-                      title="Salin perintah CLI"
-                    >
-                      {copiedType === 'cli_cmd' ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentPageIndex(pgIdx);
+                              setActiveTab('canvas_editor');
+                            }}
+                            className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-[11px] font-semibold text-indigo-200 hover:text-white border border-indigo-500/30 transition"
+                          >
+                            <span>Buka di Canvas Editor</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Panels in this page */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {pg.panels.map((pnl) => (
+                            <div
+                              key={pnl.id}
+                              className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-xs space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-200 font-mono text-[11px]">
+                                  {pnl.label}
+                                </span>
+                                {pnl.sfxPrompt && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono text-[9px] font-bold">
+                                    SFX: {pnl.sfxPrompt}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="text-[11px] text-slate-400 line-clamp-2">
+                                <span className="text-slate-500">Visual:</span> {pnl.visualPrompt}
+                              </div>
+
+                              <div className="p-2 rounded bg-slate-950 border border-slate-800/60 text-[11px] text-amber-300">
+                                <span className="font-bold text-indigo-400">{pnl.speaker}:</span> &quot;{pnl.dialogue}&quot;
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copyToClipboard(
+                                    `${pnl.visualPrompt}, ${artStyle}, manhwa high quality art style, 8k masterpiece`,
+                                    `pnl_prompt_${pnl.id}`
+                                  )
+                                }
+                                className="w-full inline-flex items-center justify-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-300 transition"
+                              >
+                                {copiedType === `pnl_prompt_${pnl.id}` ? (
+                                  <>
+                                    <Check className="w-3 h-3 text-emerald-400" />
+                                    <span>Prompt Google Flow Tersalin!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copy Prompt Google Flow</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Player Video Final Episode (Jika Sudah Selesai) */}
-          {(isVideoJobComplete || activeProject?.video_url) && (
-            <div className="p-6 rounded-2xl bg-slate-900 border border-emerald-500/40 space-y-4 shadow-2xl animate-fadeIn">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-base font-bold text-white">
-                    Final Episode Siap Tayang (1080x1920 Vertikal)
-                  </h3>
-                </div>
-
-                {activeProject?.video_url && (
-                  <a
-                    href={activeProject.video_url}
-                    download={`recap_${activeProject.id.slice(0, 8)}.mp4`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition shadow-md shadow-emerald-600/20"
+        {/* ===================================================================== */}
+        {/* TAB 2: [Interactive Comic Canvas Editor] (FITUR UTAMA) */}
+        {/* ===================================================================== */}
+        {activeTab === 'canvas_editor' && (
+          <div className="space-y-4 animate-fadeIn">
+            {/* Sub-Header Page Switcher Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-slate-900 border border-slate-800">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Daftar Halaman:
+                </span>
+                <div className="flex items-center space-x-1.5">
+                  {pages.map((pg, idx) => (
+                    <button
+                      key={pg.id}
+                      type="button"
+                      onClick={() => setCurrentPageIndex(idx)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                        currentPageIndex === idx
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Halaman {pg.pageNumber}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleAddNewPage}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition flex items-center space-x-1"
+                    title="Tambah Halaman Komik Baru"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Final Cut MP4</span>
-                  </a>
-                )}
+                    <Plus className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>+ Halaman</span>
+                  </button>
+                </div>
               </div>
 
-              {activeProject?.video_url && (
-                <div className="max-w-sm mx-auto aspect-[9/16] rounded-xl overflow-hidden border border-slate-800 bg-black shadow-2xl">
-                  <video
-                    src={activeProject.video_url}
-                    controls
-                    className="w-full h-full object-contain"
-                  />
+              <div className="flex items-center space-x-3 text-xs text-slate-400">
+                <span>Layout: <strong className="text-white capitalize">{activePage.layout}</strong></span>
+                <span>•</span>
+                <span>Balon: <strong className="text-white">{activePage.bubbles.length}</strong></span>
+                <span>•</span>
+                <span>SFX: <strong className="text-white">{activePage.sfxStickers.length}</strong></span>
+              </div>
+            </div>
+
+            {/* The Main Konva Comic Canvas Editor Component */}
+            <ComicEditorCanvas
+              page={activePage}
+              onUpdatePage={handleUpdateActivePage}
+              onGoToMotionRecap={() => setActiveTab('export_recap')}
+            />
+          </div>
+        )}
+
+        {/* ===================================================================== */}
+        {/* TAB 3: [Export & Motion Recap] */}
+        {/* ===================================================================== */}
+        {activeTab === 'export_recap' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Header */}
+            <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-purple-950/40 to-slate-900 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span className="px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-mono font-bold tracking-wider">
+                  TAB 3 • EXPORT &amp; MOTION RECAP
+                </span>
+                <h1 className="text-xl font-extrabold text-white mt-2">
+                  Export Komik Digital &amp; Animasi Video Recap Remotion 2.5D
+                </h1>
+                <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                  Ekspor halaman komik ke file resolusi tinggi siap baca atau ubah urutan panel komik Anda secara instan menjadi video animasi gerak vertikal 9:16 lengkap dengan vokal AI dan BGM dinamis.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('canvas_editor')}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition self-start md:self-auto shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Kembali ke Canvas</span>
+              </button>
+            </div>
+
+            {/* Dual Action Grid: Export High-Res PNG vs Animate Video Recap */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Box 1: Digital Comic Export (Print & Webtoon HQ) */}
+              <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-5">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">
+                    Export Comic Page (High-Res PNG / PDF Ready)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                    Unduh halaman komik aktif dalam format grafis kristal resolusi tinggi (pixel ratio 2x) dengan seluruh balon ucapan dan efek teks aksi yang sudah di-render tajam.
+                  </p>
+
+                  <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-xs font-mono">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Halaman Terpilih:</span>
+                      <span className="text-white">Halaman {activePage.pageNumber} ({activePage.title})</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Format Target:</span>
+                      <span className="text-emerald-400">PNG Lossless (1440 x 2160 px @ 2x)</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Kompatibilitas:</span>
+                      <span className="text-slate-300">Webtoon, Tapas, Manga Plus, Print</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('canvas_editor');
+                  }}
+                  className="w-full inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/20 transition cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Buka Canvas &amp; Unduh PNG</span>
+                </button>
+              </div>
+
+              {/* Box 2: Animate Page to Video Recap (Remotion 2.5D) */}
+              <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between space-y-5">
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-3">
+                    <Film className="w-5 h-5" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold text-white">
+                      Animate Page to Video Recap (Remotion)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-mono font-bold">
+                      2.5D PARALLAX
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                    Sistem otomatis mengubah urutan Panel 1 -&gt; Panel 2 -&gt; Panel 3 menjadi video gerak vertikal 9:16 lengkap dengan subtitle karaoke emas, vokal AI, dan BGM.
+                  </p>
+
+                  <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800/80 space-y-2 text-xs font-mono">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Video Engine:</span>
+                      <span className="text-indigo-300">Remotion 2.5D (Kinetic Captions + RMBG)</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Voice Engine:</span>
+                      <span className="text-purple-300 capitalize">{voiceEngine} ({voiceEmotion})</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>BGM Soundtrack:</span>
+                      <span className="text-amber-300 capitalize">{bgmPreset.replace('_', ' ')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={isRemotionRendering}
+                    onClick={handleTriggerRemotionRender}
+                    className="w-full inline-flex items-center justify-center space-x-2 px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-95 text-xs font-bold text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isRemotionRendering ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Merender Video 2.5D Remotion...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Film className="w-4 h-4" />
+                        <span>Mulai Render Video Recap 2.5D</span>
+                      </>
+                    )}
+                  </button>
+
+                  {remotionCliCommand && (
+                    <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[10px] font-mono text-slate-400 flex items-center justify-between">
+                      <span className="truncate">CLI: {remotionCliCommand}</span>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(remotionCliCommand, 'rem_cli')}
+                        className="ml-2 text-indigo-400 hover:text-indigo-300"
+                      >
+                        {copiedType === 'rem_cli' ? 'Tersalin' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Live Web Studio Remotion Player (Live Zero-Export Playback) */}
+            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <Play className="w-4 h-4 text-indigo-400" />
+                    <span>Live Studio Player Preview (Zero-Export Instant Playback)</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Putar video recap langsung di browser tanpa perlu menunggu proses render video selesai.
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                  @remotion/player Active
+                </span>
+              </div>
+
+              {/* Remotion Player Container */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex justify-center">
+                <RemotionPreviewPlayer
+                  scenes={remotionScenes as any}
+                  projectTitle={storyTitle}
+                  bgmPreset={bgmPreset}
+                  bgmVolume={0.15}
+                />
+              </div>
+
+              {renderedVideoUrl && (
+                <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-200">
+                      Video MP4 Berhasil Dirender!
+                    </span>
+                  </div>
+                  <a
+                    href={renderedVideoUrl}
+                    download
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Unduh Video MP4</span>
+                  </a>
                 </div>
               )}
             </div>
-          )}
+          </div>
+        )}
+      </main>
 
-          {/* Stepper Navigation Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={() => setCurrentStep(4)}
-              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 transition"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Kembali ke Step 4</span>
-            </button>
+      {/* ========================================================================= */}
+      {/* HIDDEN SYSTEM SETTINGS DRAWER */}
+      {/* ========================================================================= */}
+      {isSystemSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setIsSystemSettingsOpen(false)}
+          />
+
+          {/* Drawer Panel */}
+          <div className="relative z-10 w-full max-w-md bg-slate-900 border-l border-slate-800 p-6 flex flex-col justify-between overflow-y-auto shadow-2xl animate-slideLeft">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div className="flex items-center space-x-2">
+                  <Sliders className="w-5 h-5 text-indigo-400" />
+                  <h2 className="text-base font-bold text-white">System &amp; Engine Settings</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSystemSettingsOpen(false)}
+                  className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 1. Video Render Engine */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Video Render Engine
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRenderEngine('remotion')}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      renderEngine === 'remotion'
+                        ? 'bg-indigo-950/40 border-indigo-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs">Remotion 2.5D</div>
+                    <div className="text-[10px] text-indigo-300 font-normal mt-0.5">Parallax + Kinetic Sub</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRenderEngine('ffmpeg')}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      renderEngine === 'ffmpeg'
+                        ? 'bg-indigo-950/40 border-indigo-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs">FFmpeg Concat</div>
+                    <div className="text-[10px] text-slate-400 font-normal mt-0.5">Fast Stream Stitch</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Voice Engine Selector */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Voice Synthesis Engine
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVoiceEngine('edge_tts')}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      voiceEngine === 'edge_tts'
+                        ? 'bg-indigo-950/40 border-indigo-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs">Edge-TTS</div>
+                    <div className="text-[10px] text-slate-400 font-normal mt-0.5">ArdiNeural • Fast</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setVoiceEngine('voxcpm')}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      voiceEngine === 'voxcpm'
+                        ? 'bg-purple-950/40 border-purple-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="text-xs">VoxCPM Neural</div>
+                    <div className="text-[10px] text-purple-300 font-normal mt-0.5">48kHz • RTX 3060 Ti</div>
+                  </button>
+                </div>
+
+                {voiceEngine === 'voxcpm' && (
+                  <div className="pt-2">
+                    <span className="text-[11px] text-slate-400">Emosi Suara VoxCPM:</span>
+                    <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+                      {(['dramatic', 'intense', 'calm', 'whisper', 'angry'] as const).map((emo) => (
+                        <button
+                          key={emo}
+                          type="button"
+                          onClick={() => setVoiceEmotion(emo)}
+                          className={`py-1 rounded text-[10px] font-bold capitalize transition ${
+                            voiceEmotion === emo
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          {emo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. BGM Preset Selection */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  BGM Soundtrack Preset
+                </label>
+                <div className="space-y-2">
+                  {[
+                    { id: 'epic_battle', label: 'Epic Battle / Boss Fight' },
+                    { id: 'mystery_dungeon', label: 'Dark Mystery Dungeon' },
+                    { id: 'melancholy_sad', label: 'Emotional / Tragic Awakening' },
+                  ].map((bgm) => (
+                    <div
+                      key={bgm.id}
+                      onClick={() => setBgmPreset(bgm.id as any)}
+                      className={`p-2.5 rounded-xl border cursor-pointer text-xs flex items-center justify-between transition ${
+                        bgmPreset === bgm.id
+                          ? 'border-amber-500 bg-amber-950/30 text-white font-bold'
+                          : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{bgm.label}</span>
+                      {bgmPreset === bgm.id && (
+                        <span className="text-[10px] text-amber-400 font-mono">AKTIF</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 4. Background Worker Status */}
+              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2 font-mono">
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Worker Queue:</span>
+                  <span className="text-emerald-400">Connected (Supabase)</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>ComfyUI Server:</span>
+                  <span className="text-slate-300">127.0.0.1:8188</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Chrome Headless:</span>
+                  <span className="text-emerald-400">Installed (@remotion/cli)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Close Drawer Button */}
+            <div className="pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsSystemSettingsOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition"
+              >
+                Tutup Pengaturan
+              </button>
+            </div>
           </div>
         </div>
       )}
