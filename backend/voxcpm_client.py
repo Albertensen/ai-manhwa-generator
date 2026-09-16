@@ -82,7 +82,8 @@ def get_voxcpm_model():
         start_t = time.time()
         _voxcpm_model = VoxCPM.from_pretrained(
             "openbmb/VoxCPM2",
-            load_denoiser=False
+            load_denoiser=False,
+            optimize=False
         )
         print(f"[VoxCPM] Model loaded in {time.time() - start_t:.2f}s on {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
     return _voxcpm_model
