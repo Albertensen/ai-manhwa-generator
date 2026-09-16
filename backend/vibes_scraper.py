@@ -135,15 +135,41 @@ class VibesScraper:
         if not self.page:
             return False
         try:
-            self.page.goto(self.project_url, wait_until="domcontentloaded", timeout=20000)
-            time.sleep(3)
+            self.page.goto("https://vibes.ai/projects", wait_until="networkidle", timeout=30000)
+            time.sleep(2)
             current_url = self.page.url
             if "auth.meta.com" in current_url:
                 return False
-            if "/projects/" in current_url and "login" not in current_url:
+            # Check for project card or user avatar
+            if self.page.locator("text='MANHWA'").count() > 0 or self.page.locator("img[alt*='albert']").count() > 0 or "/projects" in current_url:
                 return True
             return False
         except Exception:
+            return False
+
+    def enter_project(self) -> bool:
+        """Navigates to the MANHWA project canvas."""
+        if not self.page:
+            return False
+        try:
+            if self.page.locator("text='Describe a video...'").count() > 0 or self.page.locator("button:has-text('Start, end frame')").count() > 0:
+                return True
+
+            self.page.goto("https://vibes.ai/projects", wait_until="networkidle", timeout=30000)
+            time.sleep(2)
+
+            manhwa_card = self.page.locator("text='MANHWA'").first
+            if manhwa_card.is_visible(timeout=8000):
+                manhwa_card.click()
+                time.sleep(3)
+                return True
+
+            # Direct navigation fallback
+            self.page.goto(self.project_url, wait_until="networkidle", timeout=30000)
+            time.sleep(3)
+            return True
+        except Exception as e:
+            print(f"[VibesScraper] Error entering MANHWA project: {e}")
             return False
 
     def generate_single_motion(
@@ -156,6 +182,7 @@ class VibesScraper:
     ) -> bool:
         """
         Uploads panel image to Vibes.ai project, sets motion prompt, and downloads the resulting motion clip.
+        Uses live project batch API polling for direct high-speed MP4 capture.
         """
         out_p = Path(output_video_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -168,73 +195,139 @@ class VibesScraper:
         if not self.page:
             self.start()
 
-        print(f"[VibesScraper] Opening project page: {self.project_url}")
-        try:
-            self.page.goto(self.project_url, wait_until="networkidle", timeout=30000)
-        except Exception as e:
-            print(f"[VibesScraper] Navigation notice: {e}")
-
-        # Check if redirected to login
-        if "auth.meta.com" in self.page.url or "login" in self.page.url.lower():
-            print("[VibesScraper] Sesi Vibes.ai belum terotentikasi. Jalankan 'python backend/vibes_scraper.py --login' untuk login.")
+        if not self.enter_project():
+            print("[VibesScraper] Failed to access MANHWA project canvas.")
             return False
 
-        # Attempt to find file upload input
-        print("[VibesScraper] Uploading panel image to Vibes.ai project...")
-        uploaded = False
+        print(f"[VibesScraper] Preparing motion generation on Vibes.ai for {img_p.name}...")
+
+        # 1. Attach start frame
         try:
-            file_input = self.page.locator("input[type='file']").first
-            if file_input.count() > 0:
+            start_frame_btn = self.page.locator("button:has-text('Start, end frame')").first
+            if start_frame_btn.is_visible(timeout=5000):
+                start_frame_btn.click()
+                time.sleep(1.5)
+
+            add_start = self.page.locator("text='Add start frame'").first
+            if add_start.is_visible(timeout=5000):
+                add_start.click()
+                time.sleep(2)
+
+            # Inside modal 'Select start frame'
+            modal1 = self.page.locator("[role='dialog']").first
+            modal_up_btn = modal1.locator("button:has-text('Upload')").first
+            if modal_up_btn.is_visible(timeout=5000):
+                modal_up_btn.click()
+                time.sleep(2)
+
+                # Inside modal 'Upload images'
+                modal2 = self.page.locator("[role='dialog']").last
+                file_input = modal2.locator("input[type='file']").first
                 file_input.set_input_files(str(img_p))
-                uploaded = True
-                print("[VibesScraper] Image file uploaded successfully.")
-                time.sleep(3)
-        except Exception as up_err:
-            print(f"[VibesScraper] File upload notice: {up_err}")
+                time.sleep(1.5)
 
-        if not uploaded:
-            print("[VibesScraper] Upload input not found on page structure.")
-            return False
+                modal2_upload = modal2.locator("button:has-text('Upload')").last
+                if modal2_upload.is_enabled():
+                    modal2_upload.click()
+                    print(f"[VibesScraper] Uploaded {img_p.name} to MANHWA project assets.")
+                    try:
+                        self.page.wait_for_selector("text='Uploading 1 image'", state="hidden", timeout=25000)
+                    except Exception:
+                        pass
+                    time.sleep(3)
 
-        # Locate prompt input and enter motion prompt
+            # Select the newly uploaded frame in modal1
+            modal1 = self.page.locator("[role='dialog']").first
+            card_img = modal1.locator("img").first
+            if card_img.is_visible(timeout=5000):
+                card_img.click()
+                time.sleep(1.5)
+
+            add_to_video_btn = modal1.locator("button:has-text('Add to video')").first
+            if add_to_video_btn.is_enabled():
+                add_to_video_btn.click()
+                time.sleep(2)
+                print("[VibesScraper] Start frame successfully attached to video composer.")
+        except Exception as step1_err:
+            print(f"[VibesScraper] Notice attaching start frame: {step1_err}")
+
+        # 2. Enter motion prompt in Lexical editor
         try:
-            prompt_input = self.page.locator("textarea, [contenteditable='true'], input[placeholder*='Describe']").first
-            if prompt_input.is_visible(timeout=5000):
-                prompt_input.click()
-                prompt_input.fill(motion_prompt)
-                print(f"[VibesScraper] Applied motion prompt: {motion_prompt[:50]}...")
-        except Exception:
-            pass
+            editor = self.page.locator("[data-lexical-editor='true']").first
+            if editor.is_visible(timeout=5000):
+                editor.click()
+                time.sleep(0.5)
+                self.page.keyboard.press("Control+A")
+                self.page.keyboard.press("Backspace")
+                self.page.keyboard.type(motion_prompt, delay=15)
+                time.sleep(1.5)
+                print(f"[VibesScraper] Applied motion prompt: {motion_prompt[:60]}...")
+        except Exception as prompt_err:
+            print(f"[VibesScraper] Notice entering prompt: {prompt_err}")
 
-        # Trigger Generate button
-        print("[VibesScraper] Triggering generation...")
+        # 3. Trigger Generate button
+        submit_clicked = False
         try:
-            gen_btn = self.page.locator("button:has-text('Generate'), button:has-text('Create'), button[aria-label*='Generate']").first
-            if gen_btn.is_visible(timeout=5000):
+            gen_btn = self.page.locator("button[aria-label='Generate']").first
+            if gen_btn.is_visible(timeout=5000) and gen_btn.is_enabled():
                 gen_btn.click()
-                print("[VibesScraper] Generate button clicked! Waiting for render...")
+                submit_clicked = True
+                print("[VibesScraper] Generate button clicked! Waiting for video render from Vibes.ai cloud...")
         except Exception as gen_err:
             print(f"[VibesScraper] Generate click notice: {gen_err}")
 
-        # Poll for output video element
-        downloaded = False
+        if not submit_clicked:
+            print("[VibesScraper] Generate button not clickable or disabled.")
+            return False
+
+        # 4. Direct API batch polling for generated video URL
+        project_id = "57d7487a-ce33-4674-95a5-70eb9212651e"
+        batches_url = f"https://vibes.ai/api/projects/{project_id}/batches?limit=6&offset=0"
+
         start_wait = time.time()
+        video_url = None
         while time.time() - start_wait < timeout_sec:
+            time.sleep(5)
             try:
-                video_el = self.page.locator("video[src*='blob:'], video[src*='http'], video source").first
-                if video_el.is_visible(timeout=3000):
-                    src = video_el.get_attribute("src")
-                    if src and src.startswith("http"):
-                        import urllib.request
-                        urllib.request.urlretrieve(src, str(out_p))
-                        downloaded = True
-                        print(f"[VibesScraper] Downloaded motion video: {out_p.name}")
-                        break
+                batch_data = self.page.evaluate(f"""async () => {{
+                    try {{
+                        const res = await fetch('{batches_url}', {{ credentials: 'include' }});
+                        return await res.json();
+                    }} catch (e) {{
+                        return null;
+                    }}
+                }}""")
+                if batch_data and "batches" in batch_data and len(batch_data["batches"]) > 0:
+                    latest_batch = batch_data["batches"][0]
+                    for item in latest_batch.get("content", []):
+                        v_url = item.get("videoUrl")
+                        if v_url and v_url.startswith("http"):
+                            video_url = v_url
+                            break
+                if video_url:
+                    break
+                print(f"[VibesScraper] Video generating in cloud... ({int(time.time() - start_wait)}s elapsed)")
             except Exception:
                 pass
-            time.sleep(4)
 
-        return downloaded
+        if video_url:
+            print(f"[VibesScraper] Video render ready! Downloading from cloud...")
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    video_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req) as resp, open(str(out_p), 'wb') as f:
+                    f.write(resp.read())
+                if out_p.exists() and out_p.stat().st_size > 100000:
+                    print(f"[VibesScraper] Downloaded motion video: {out_p.name} ({out_p.stat().st_size / 1024 / 1024:.2f} MB)")
+                    return True
+            except Exception as dl_err:
+                print(f"[VibesScraper] Download notice: {dl_err}")
+
+        return False
+
 
     def create_local_motion_fallback(
         self,
