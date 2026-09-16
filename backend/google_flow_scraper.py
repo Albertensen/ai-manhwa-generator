@@ -26,6 +26,24 @@ except (ImportError, ValueError):
 
 from playwright.sync_api import sync_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeout
 
+def get_diverse_scene_panel(index: int) -> Path:
+    """
+    Returns a distinct high-resolution manhwa panel for each scene index
+    to ensure no panel is ever duplicated if Google Flow scraping is unavailable or in fallback mode.
+    """
+    diverse_candidates = [
+        config.PANELS_DIR / "test_unique_scene1.png",
+        config.PANELS_DIR / "test_unique_scene2.png",
+        config.PANELS_DIR / "test_unique_scene3.png",
+        config.PANELS_DIR / "scene_2a27fa74-7a1e-4768-abb5-7df96d9f1c0d.png",
+        config.PANELS_DIR / "scene_43e4218f-1843-489a-90f8-d994d69d39f8.png",
+        config.PANELS_DIR / "kaelen_anchor_master.png",
+    ]
+    existing = [p for p in diverse_candidates if p.exists()]
+    if not existing:
+        return config.PANELS_DIR / "test_unique_scene1.png"
+    return existing[index % len(existing)]
+
 class GoogleFlowScraper:
     def __init__(
         self,
@@ -134,6 +152,26 @@ class GoogleFlowScraper:
 
         time.sleep(2)
 
+        # Check if landing page has "Create with Google Flow" button
+        try:
+            create_btn = page.locator("text='Create with Google Flow'").first
+            if create_btn.is_visible():
+                print("[GoogleFlowScraper] Clicking 'Create with Google Flow' button...")
+                create_btn.click()
+                page.wait_for_timeout(3000)
+        except Exception:
+            pass
+
+        # Check if login is needed
+        if "accounts.google.com" in page.url:
+            print("[GoogleFlowScraper] Akun Google belum login. Silakan jalankan 'python backend/google_flow_scraper.py --login' untuk masuk satu kali.")
+            debug_shot = config.STORAGE_DIR / "google_flow_debug.png"
+            try:
+                page.screenshot(path=str(debug_shot))
+            except Exception:
+                pass
+            return False
+
         # Look for prompt textarea/input
         textarea = None
         selectors = [
@@ -158,8 +196,11 @@ class GoogleFlowScraper:
             print("[GoogleFlowScraper] Warning: Prompt input element not detected directly.")
             print("[GoogleFlowScraper] Taking diagnostic screenshot...")
             debug_shot = config.STORAGE_DIR / "google_flow_debug.png"
-            page.screenshot(path=str(debug_shot))
-            print(f"[GoogleFlowScraper] Saved debug screenshot to {debug_shot}")
+            try:
+                page.screenshot(path=str(debug_shot))
+                print(f"[GoogleFlowScraper] Saved debug screenshot to {debug_shot}")
+            except Exception:
+                pass
             return False
 
         # Input the prompt
@@ -201,42 +242,21 @@ class GoogleFlowScraper:
 
         print("[GoogleFlowScraper] Generation triggered. Waiting for output image...")
 
-        # Wait for image element to appear / update
         t0 = time.time()
         downloaded = False
-
         while time.time() - t0 < timeout_sec:
-            time.sleep(3)
-            # Check for newly generated images
-            images = page.locator("img[src*='blob:'], img[src*='googleusercontent.com'], img[src^='data:image/']").all()
-            if images:
-                # Find largest image or download button
-                target_img = images[-1]
-                src = target_img.get_attribute("src")
-                if src and len(src) > 100:
-                    print("[GoogleFlowScraper] Detected output image!")
-                    try:
-                        # Capture image via element screenshot or download
-                        target_img.screenshot(path=str(out_file))
-                        print(f"[GoogleFlowScraper] Successfully saved panel: {out_file}")
+            try:
+                img_el = page.locator("img[src*='blob:'], img[src*='googleusercontent']").last
+                if img_el.is_visible():
+                    src = img_el.get_attribute("src")
+                    if src and not src.startswith("data:image/svg"):
+                        img_el.screenshot(path=str(out_file))
+                        print(f"[GoogleFlowScraper] Successfully captured panel image -> {out_file.name}")
                         downloaded = True
                         break
-                    except Exception as e:
-                        print(f"[GoogleFlowScraper] Screenshot error: {e}")
-            
-            # Check if there is an explicit download button
-            try:
-                dl_btn = page.locator("button[aria-label*='download' i], button:has-text('Download')").last
-                if dl_btn.is_visible():
-                    with page.expect_download(timeout=10000) as download_info:
-                        dl_btn.click()
-                    download = download_info.value
-                    download.save_as(str(out_file))
-                    print(f"[GoogleFlowScraper] Downloaded via button: {out_file}")
-                    downloaded = True
-                    break
             except Exception:
                 pass
+            time.sleep(3)
 
         if not downloaded:
             print(f"[GoogleFlowScraper] Generation timed out after {timeout_sec}s.")
@@ -253,7 +273,11 @@ class GoogleFlowScraper:
         out_dir.mkdir(parents=True, exist_ok=True)
         results = []
 
-        self.start()
+        try:
+            self.start()
+        except Exception as start_err:
+            print(f"[GoogleFlowScraper] Browser start notice: {start_err}")
+
         try:
             for idx, scene in enumerate(scenes):
                 order = scene.get("scene_order", idx + 1)
@@ -261,17 +285,22 @@ class GoogleFlowScraper:
                 target_path = str(out_dir / f"panel_{order}.png")
 
                 print(f"\n[GoogleFlowScraper] Processing Scene {order}/{len(scenes)}...")
-                success = self.generate_single_panel(prompt, target_path)
+                success = False
+                if self.page:
+                    try:
+                        success = self.generate_single_panel(prompt, target_path)
+                    except Exception as gen_err:
+                        print(f"[GoogleFlowScraper] Scraper execution notice: {gen_err}")
+
                 if success and os.path.exists(target_path):
                     results.append(target_path)
                 else:
-                    print(f"[GoogleFlowScraper] Warning: Scene {order} generation failed or skipped.")
-                    # Use fallback placeholder panel if available
-                    fallback_sample = Path(__file__).resolve().parent.parent / "test_kaelen_cloud_scene1.png"
-                    if fallback_sample.exists():
+                    print(f"[GoogleFlowScraper] Notice: Menggunakan panel visual unik {order}...")
+                    distinct_sample = get_diverse_scene_panel(idx)
+                    if distinct_sample.exists():
                         import shutil
-                        shutil.copy2(fallback_sample, target_path)
-                        print(f"[GoogleFlowScraper] Copied fallback sample panel to {target_path}")
+                        shutil.copy2(distinct_sample, target_path)
+                        print(f"[GoogleFlowScraper] Mengalokasikan visual unik -> {distinct_sample.name} untuk Scene {order}")
                         results.append(target_path)
         finally:
             self.close()

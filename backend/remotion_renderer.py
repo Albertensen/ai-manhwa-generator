@@ -142,6 +142,18 @@ def render_remotion_video(props_data: dict, output_file: str = None, timeout: in
     print(f"[RemotionRenderer] Props written to: {props_tmp_path}")
     print(f"[RemotionRenderer] Rendering target: {output_file}")
 
+    # Convert to relative posix paths relative to BASE_DIR to avoid Windows shell quoting issues
+    try:
+        props_arg = f"--props={props_tmp_path.relative_to(BASE_DIR).as_posix()}"
+    except Exception:
+        props_arg = f"--props={props_tmp_path.as_posix()}"
+
+    out_p = Path(output_file).resolve()
+    try:
+        out_arg = f"--output={out_p.relative_to(BASE_DIR).as_posix()}"
+    except Exception:
+        out_arg = f"--output={out_p.as_posix()}"
+
     # Build command
     cmd = [
         "npx",
@@ -149,9 +161,10 @@ def render_remotion_video(props_data: dict, output_file: str = None, timeout: in
         "render",
         "src/remotion/index.ts",
         "ManhwaRecapComposition",
-        output_file,
-        f"--props={str(props_tmp_path)}",
-        "--chromium-options=--allow-file-access-from-files --disable-web-security"
+        out_arg,
+        props_arg,
+        "--overwrite",
+        "--disable-web-security"
     ]
 
     print(f"[RemotionRenderer] Executing: {' '.join(cmd)}")

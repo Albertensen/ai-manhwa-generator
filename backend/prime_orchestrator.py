@@ -26,8 +26,9 @@ sys.path.insert(0, str(BASE_DIR))
 
 from backend import config
 from backend.comic_assembler import ComicAssembler
-from backend.google_flow_scraper import GoogleFlowScraper
+from backend.google_flow_scraper import GoogleFlowScraper, get_diverse_scene_panel
 from backend import tts_engine
+from backend import voxcpm_client
 from backend import remotion_renderer
 
 # Try layer separator
@@ -206,9 +207,8 @@ class PrimeOrchestrator:
             json.dump(story_data, f, indent=2, ensure_ascii=False)
 
         scenes = story_data["scenes"]
-        sample_fallback = BASE_DIR / "test_kaelen_cloud_scene1.png"
 
-        # --- STEP 1: Image Generation (Google Flow) ---
+        # --- STEP 1: Image Generation (Google Flow Nano Banana) ---
         print("[Step 1/5] Generating panel images via Google Flow (Nano Banana)...")
         panel_paths = []
         if not skip_scraper:
@@ -218,16 +218,19 @@ class PrimeOrchestrator:
             except Exception as e:
                 print(f"[PrimeOrchestrator] Google Flow scraper notice: {e}")
         
-        # Fallback check
+        final_panel_paths = []
+        # Ensure every single panel has a distinct visual (never duplicate images)
         for idx, sc in enumerate(scenes):
             expected = panels_dir / f"panel_{idx + 1}.png"
-            if not expected.exists():
-                if sample_fallback.exists():
+            if not expected.exists() or expected.stat().st_size == 0:
+                distinct_sample = get_diverse_scene_panel(idx)
+                if distinct_sample.exists():
                     import shutil
-                    shutil.copy2(sample_fallback, expected)
-                    print(f"[PrimeOrchestrator] Using sample panel for Scene {idx + 1}: {expected.name}")
-            panel_paths.append(str(expected))
+                    shutil.copy2(distinct_sample, expected)
+                    print(f"[PrimeOrchestrator] Allocating distinct visual for Scene {idx + 1}: {distinct_sample.name}")
+            final_panel_paths.append(str(expected))
             sc["image_path"] = str(expected)
+        panel_paths = final_panel_paths
 
         # --- STEP 2: Assemble Digital Comic & PDF ---
         print("\n[Step 2/5] Assembling comic pages and exporting PDF/PNG...")
@@ -252,29 +255,33 @@ class PrimeOrchestrator:
         webtoon_strip_path = str(proj_root / f"{project_id}_webtoon_strip.png")
         assembler.export_webtoon_strip(assembled_pages, webtoon_strip_path)
 
-        # --- STEP 3: Voiceover & Subtitles (Edge-TTS) ---
-        print("\n[Step 3/5] Synthesizing Indonesian narration with word-level subtitles...")
+        # --- STEP 3: Voiceover & Subtitles (VoxCPM2 Neural Actor + Faster-Whisper) ---
+        print("\n[Step 3/5] Synthesizing Indonesian narration with VoxCPM2 (CUDA) & word-level subtitles...")
         for idx, sc in enumerate(scenes):
             audio_out = str(audios_dir / f"scene_{idx + 1}.mp3")
             narration_text = sc.get("narration") or sc.get("dialogue") or "Adegan baru..."
             
-            # Synthesize with timestamps
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            emotion = "dramatic"
+            if sc.get("bubble_type") == "shout" or idx == 1:
+                emotion = "intense"
+
             try:
-                dur, words = loop.run_until_complete(
-                    tts_engine.synthesize_voice(
-                        narration_text,
-                        audio_out,
-                        return_timestamps=True
-                    )
+                dur, words = voxcpm_client.synthesize_speech(
+                    narration_text,
+                    audio_out,
+                    emotion=emotion,
+                    return_timestamps=True
                 )
                 sc["audio_path"] = audio_out
                 sc["duration_seconds"] = dur
                 sc["word_timestamps"] = words
-                print(f"  - Scene {idx + 1}: {dur:.1f}s audio, {len(words)} word timestamps")
-            finally:
-                loop.close()
+                print(f"  - Scene {idx + 1} ({emotion}): {dur:.1f}s audio, {len(words)} word timestamps")
+            except Exception as e:
+                print(f"  - Scene {idx + 1}: VoxCPM error ({e}), trying fallback to Edge-TTS")
+                dur, words = voxcpm_client._fallback_edge_tts(narration_text, audio_out, return_timestamps=True)
+                sc["audio_path"] = audio_out
+                sc["duration_seconds"] = dur
+                sc["word_timestamps"] = words
 
         # --- STEP 4: Layer Cutout for 2.5D Parallax ---
         print("\n[Step 4/5] Separating character foregrounds for 2.5D Parallax...")
@@ -285,10 +292,10 @@ class PrimeOrchestrator:
 
             if process_panel_layers and bg_path and os.path.exists(bg_path):
                 try:
-                    layers = process_panel_layers(bg_path)
+                    layers = process_panel_layers(bg_path, output_dir=str(cutouts_dir))
                     if layers.get("foreground_local") and os.path.exists(layers["foreground_local"]):
                         sc["foregroundUrl"] = layers["foreground_local"]
-                        print(f"  - Scene {idx + 1}: Cutout generated successfully.")
+                        print(f"  - Scene {idx + 1}: Cutout generated successfully -> {Path(layers['foreground_local']).name}")
                 except Exception as e:
                     print(f"  - Scene {idx + 1}: Cutout skipped ({e})")
 

@@ -40,11 +40,14 @@ def check_vram_available(min_free_gb: float = 4.5) -> bool:
         import torch
         if not torch.cuda.is_available():
             return False
+        global _voxcpm_model
+        # If model is already loaded into VRAM, only ~0.5GB of working memory is needed
+        effective_min_free = 0.5 if _voxcpm_model is not None else min_free_gb
         total = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         allocated = torch.cuda.memory_allocated(0) / (1024**3)
         reserved = torch.cuda.memory_reserved(0) / (1024**3)
         free = total - max(allocated, reserved)
-        return free >= min_free_gb
+        return free >= effective_min_free
     except Exception:
         return False
 
